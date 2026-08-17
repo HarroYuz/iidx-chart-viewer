@@ -68,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -1151,7 +1152,7 @@ private fun PlayerConfigBox(
             }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PlayerSwitchSetting("小节线", settings.showBarLines) { onSettingsChange(settings.copy(showBarLines = it)) }
@@ -1210,7 +1211,11 @@ private fun PlayerChoice(
 private fun PlayerSwitchSetting(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = Muted, fontSize = 9.sp, maxLines = 1)
-        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.padding(start = 1.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.padding(start = 1.dp).scale(.72f),
+        )
     }
 }
 
