@@ -14,6 +14,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -1076,7 +1077,7 @@ private fun PlayerConfigBox(
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("−", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-                OutlinedTextField(
+                BasicTextField(
                     value = speedInput,
                     onValueChange = { value ->
                         val digits = value.filter(Char::isDigit).take(3)
@@ -1085,10 +1086,17 @@ private fun PlayerConfigBox(
                             onSettingsChange(settings.copy(speed = next.coerceIn(1, 100)))
                         }
                     },
-                    modifier = Modifier.width(46.dp).height(42.dp),
-                    textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
+                    modifier = Modifier.width(46.dp).height(34.dp)
+                        .border(1.dp, ComposeColor(0xFFB7B4C3), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 4.dp),
+                    textStyle = TextStyle(color = Ink, fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    decorationBox = { innerTextField ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            innerTextField()
+                        }
+                    },
                 )
                 TextButton(
                     onClick = { onSettingsChange(settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(100))) },
