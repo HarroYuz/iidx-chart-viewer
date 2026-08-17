@@ -88,7 +88,7 @@ private val PlayerLane = ComposeColor(0xFF252735)
 private val PlayerCenterGap = ComposeColor(0xFF3A3D49)
 private val PlayerEdge = ComposeColor(0xFF55596A)
 private val PlayerRed = ComposeColor(0xFFFF1D2E)
-private val PlayerSkyBlue = ComposeColor(0xFF167CAF)
+private val PlayerSkyBlue = ComposeColor(0xFF28A9E0)
 private const val TEXTAGE_SYNC_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
 class MainActivity : ComponentActivity() {
