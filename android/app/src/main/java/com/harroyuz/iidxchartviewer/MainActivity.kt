@@ -1082,7 +1082,7 @@ private fun PlayerConfigBox(
                             onSettingsChange(settings.copy(speed = next.coerceIn(1, 50)))
                         }
                     },
-                    modifier = Modifier.width(54.dp).height(40.dp),
+                    modifier = Modifier.width(46.dp).height(46.dp),
                     textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
