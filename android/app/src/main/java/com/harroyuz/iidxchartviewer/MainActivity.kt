@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,12 +31,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -67,6 +72,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -74,13 +80,17 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -446,8 +456,28 @@ private fun ChartBrowserScreen(
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    var filterExpanded by rememberSaveable { mutableStateOf(false) }
+    var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
+    val versionOptions = state.charts
+        .asSequence()
+        .filter { it.mode == mode && it.version.isNotBlank() }
+        .map { it.version }
+        .distinct()
+        .sortedWith(compareBy<String>({ versionNumber(it) }, { it.lowercase(Locale.US) }))
+        .toList()
+    val levelOptions = state.charts
+        .asSequence()
+        .filter { it.mode == mode && it.level > 0 }
+        .map { it.level }
+        .distinct()
+        .sorted()
+        .toList()
     val filteredCharts = state.charts.filter {
-        it.mode == mode && (query.isBlank() || "${it.title} ${it.subtitle} ${it.genre} ${it.composer}".contains(query, ignoreCase = true))
+        it.mode == mode &&
+            (query.isBlank() || "${it.title} ${it.subtitle} ${it.genre} ${it.composer}".contains(query, ignoreCase = true)) &&
+            (selectedVersion == null || it.version == selectedVersion) &&
+            (selectedLevel == null || it.level == selectedLevel)
     }
     val songs = remember(filteredCharts) {
         filteredCharts.groupBy { chart ->
@@ -477,7 +507,7 @@ private fun ChartBrowserScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(modifier = Modifier.width(180.dp)) {
                 Column(Modifier.fillMaxSize()) {
                     Text(
                         "菜单",
@@ -529,14 +559,6 @@ private fun ChartBrowserScreen(
                                 modifier = Modifier.size(22.dp),
                             )
                         }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "https://github.com/HarroYuz/iidx-chart-viewer",
-                            color = Muted,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
                     }
                 }
             }
@@ -594,13 +616,48 @@ private fun ChartBrowserScreen(
 
             if (textageProgress != null) TextageSyncBanner(textageProgress)
 
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-                placeholder = { Text("搜索曲名或艺术家", color = Muted) },
-                singleLine = true,
-            )
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("搜索曲名或艺术家", color = Muted) },
+                    singleLine = true,
+                )
+                IconButton(onClick = { filterExpanded = !filterExpanded }) {
+                    FunnelIcon(if (filterExpanded || selectedVersion != null || selectedLevel != null) Purple else Muted)
+                }
+            }
+            if (filterExpanded) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilterDropdown(
+                        value = selectedVersion ?: "全部版本",
+                        options = listOf("全部版本") + versionOptions,
+                        onSelect = { selectedVersion = it.takeUnless { option -> option == "全部版本" } },
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilterDropdown(
+                        value = selectedLevel?.toString() ?: "全部等级",
+                        options = listOf("全部等级") + levelOptions.map(Int::toString),
+                        onSelect = { selectedLevel = it.toIntOrNull() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = {
+                            selectedVersion = null
+                            selectedLevel = null
+                        },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                    ) { Text("清除", color = Muted, fontSize = 11.sp) }
+                }
+            }
             Spacer(Modifier.height(6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                 items(songs, key = { it.key }) { song ->
@@ -611,6 +668,55 @@ private fun ChartBrowserScreen(
         }
     }
 }
+
+@Composable
+private fun FunnelIcon(color: ComposeColor) {
+    Canvas(Modifier.size(22.dp)) {
+        val path = Path().apply {
+            moveTo(size.width * .12f, size.height * .18f)
+            lineTo(size.width * .88f, size.height * .18f)
+            lineTo(size.width * .60f, size.height * .52f)
+            lineTo(size.width * .60f, size.height * .82f)
+            lineTo(size.width * .40f, size.height * .70f)
+            lineTo(size.width * .40f, size.height * .52f)
+            close()
+        }
+        drawPath(path, color = color, style = Stroke(width = 2f))
+    }
+}
+
+@Composable
+private fun FilterDropdown(
+    value: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember(value) { mutableStateOf(false) }
+    Box(modifier) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth().height(38.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        ) {
+            Text(value, color = Ink, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option, fontSize = 12.sp) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun versionNumber(value: String): Int =
+    Regex("\\d+").find(value)?.value?.toIntOrNull() ?: Int.MAX_VALUE
 
 private data class SongGroup(
     val key: String,
@@ -927,17 +1033,19 @@ private fun PlayerConfigBox(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSettingsChange: (PlayerSettings) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(10.dp)
     val summary = buildString {
         append("Hi-Speed: ${settings.safeSpeed}x")
         if (isSp) {
             append(", ${settings.side}")
-            if (settings.mirror) append(", MIRROR")
+            if (settings.safePlayOption != "NONE") append(", ${settings.safePlayOption}")
         }
     }
+    var speedInput by remember(settings.safeSpeed) { mutableStateOf(settings.safeSpeed.toString()) }
     Column(
-        Modifier.fillMaxWidth()
+        modifier.fillMaxWidth()
             .clip(shape)
             .background(Panel)
             .border(1.dp, ComposeColor(0xFFD8D6E1), shape),
@@ -963,60 +1071,218 @@ private fun PlayerConfigBox(
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("−", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-                Box(
-                    Modifier.width(52.dp).height(30.dp).border(1.dp, ComposeColor(0xFFCAC7D6), RoundedCornerShape(6.dp)),
-                    contentAlignment = Alignment.Center,
-                ) { Text("${settings.safeSpeed}x", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                OutlinedTextField(
+                    value = speedInput,
+                    onValueChange = { value ->
+                        val digits = value.filter(Char::isDigit).take(2)
+                        speedInput = digits
+                        digits.toIntOrNull()?.let { next ->
+                            onSettingsChange(settings.copy(speed = next.coerceIn(1, 50)))
+                        }
+                    },
+                    modifier = Modifier.width(54.dp).height(40.dp),
+                    textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
                 TextButton(
                     onClick = { onSettingsChange(settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(50))) },
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("+", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
             }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("小节线", color = Muted, fontSize = 11.sp)
-                Switch(
-                    checked = settings.showBarLines,
-                    onCheckedChange = { onSettingsChange(settings.copy(showBarLines = it)) },
-                    modifier = Modifier.padding(start = 3.dp),
+            if (isSp) {
+                PlayerSettingChoiceRow(
+                    label = "位置",
+                    choices = listOf("1P", "2P"),
+                    selected = settings.side,
+                    onSelect = { onSettingsChange(settings.copy(side = it)) },
                 )
+            }
+            PlayerSettingChoiceRow(
+                label = "选项",
+                choices = listOf("无", "MIRROR", "RANDOM"),
+                selected = when (settings.safePlayOption) {
+                    "MIRROR" -> "MIRROR"
+                    "RANDOM" -> "RANDOM"
+                    else -> "无"
+                },
+                onSelect = { selected ->
+                    onSettingsChange(settings.copy(playOption = if (selected == "无") "NONE" else selected))
+                },
+            )
+            if (settings.safePlayOption == "RANDOM") {
                 if (isSp) {
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { onSettingsChange(settings.copy(side = "1P")) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                        Text("1P", color = if (settings.side == "1P") Purple else Muted, fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = { onSettingsChange(settings.copy(side = "2P")) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                        Text("2P", color = if (settings.side == "2P") Purple else Muted, fontWeight = FontWeight.Bold)
-                    }
-                    Text("MIRROR", color = Muted, fontSize = 10.sp)
-                    Switch(
-                        checked = settings.mirror,
-                        onCheckedChange = { onSettingsChange(settings.copy(mirror = it)) },
+                    RandomMappingRow(
+                        label = "RANDOM 轨道配置",
+                        mapping = if (settings.side == "1P") settings.safeRandomMapping1P else settings.safeRandomMapping2P,
+                        onMappingChange = { mapping ->
+                            onSettingsChange(
+                                if (settings.side == "1P") settings.copy(randomMapping1P = mapping)
+                                else settings.copy(randomMapping2P = mapping),
+                            )
+                        },
+                    )
+                } else {
+                    RandomMappingRow(
+                        label = "1P：",
+                        mapping = settings.safeRandomMapping1P,
+                        onMappingChange = { onSettingsChange(settings.copy(randomMapping1P = it)) },
+                    )
+                    RandomMappingRow(
+                        label = "2P：",
+                        mapping = settings.safeRandomMapping2P,
+                        onMappingChange = { onSettingsChange(settings.copy(randomMapping2P = it)) },
                     )
                 }
             }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("变速线", color = Muted, fontSize = 11.sp)
-                Switch(
-                    checked = settings.showBpmChanges,
-                    onCheckedChange = { onSettingsChange(settings.copy(showBpmChanges = it)) },
-                    modifier = Modifier.padding(start = 3.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text("小节序号", color = Muted, fontSize = 11.sp)
-                Switch(
-                    checked = settings.showMeasureNumbers,
-                    onCheckedChange = { onSettingsChange(settings.copy(showMeasureNumbers = it)) },
-                    modifier = Modifier.padding(start = 3.dp),
-                )
+                PlayerSwitchSetting("小节线", settings.showBarLines) { onSettingsChange(settings.copy(showBarLines = it)) }
+                PlayerSwitchSetting("小节序号", settings.showMeasureNumbers) { onSettingsChange(settings.copy(showMeasureNumbers = it)) }
+                PlayerSwitchSetting("变速线", settings.showBpmChanges) { onSettingsChange(settings.copy(showBpmChanges = it)) }
             }
         }
+    }
+}
+
+@Composable
+private fun PlayerSettingChoiceRow(
+    label: String,
+    choices: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Muted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
+        choices.forEach { choice ->
+            PlayerChoice(
+                label = choice,
+                selected = choice == selected,
+                onClick = { onSelect(choice) },
+                modifier = Modifier.padding(end = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerChoice(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) Purple.copy(alpha = .13f) else Background)
+            .border(1.dp, if (selected) Purple else ComposeColor(0xFFCAC7D6), RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (selected) Purple else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun PlayerSwitchSetting(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Muted, fontSize = 9.sp, maxLines = 1)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, modifier = Modifier.padding(start = 1.dp))
+    }
+}
+
+@Composable
+private fun RandomMappingRow(
+    label: String,
+    mapping: List<Int>,
+    onMappingChange: (List<Int>) -> Unit,
+) {
+    val dragThreshold = with(LocalDensity.current) { 30.dp.toPx() }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.width(if (label == "RANDOM 轨道配置") 70.dp else 32.dp)) {
+                Text(label, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("拖动按键以配置", color = Muted, fontSize = 7.sp, maxLines = 1)
+            }
+            mapping.forEachIndexed { index, value ->
+                RandomLaneButton(
+                    value = value,
+                    dragThreshold = dragThreshold,
+                    onDragSwap = { shift ->
+                        val target = (index + shift).coerceIn(0, mapping.lastIndex)
+                        if (target != index) {
+                            val updated = mapping.toMutableList()
+                            val moved = updated[index]
+                            updated[index] = updated[target]
+                            updated[target] = moved
+                            onMappingChange(updated)
+                        }
+                    },
+                    modifier = Modifier.padding(end = 2.dp),
+                )
+            }
+            RandomLaneButton(
+                value = null,
+                dragThreshold = dragThreshold,
+                onRandomize = { onMappingChange((1..7).shuffled()) },
+                modifier = Modifier.padding(start = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RandomLaneButton(
+    value: Int?,
+    dragThreshold: Float,
+    onDragSwap: (Int) -> Unit = {},
+    onRandomize: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    var dragDistance by remember { mutableStateOf(0f) }
+    val buttonShape = RoundedCornerShape(5.dp)
+    Box(
+        modifier
+            .size(if (value == null) 36.dp else 28.dp)
+            .clip(buttonShape)
+            .background(if (value == null) Panel else if (value % 2 == 1) ComposeColor.White else ComposeColor(0xFF252535))
+            .border(1.dp, ComposeColor(0xFFE33D4F), buttonShape)
+            .then(
+                if (value == null) Modifier.clickable(onClick = onRandomize)
+                else Modifier.pointerInput(value, dragThreshold) {
+                    detectDragGestures(
+                        onDragStart = { dragDistance = 0f },
+                        onDragCancel = { dragDistance = 0f },
+                        onDragEnd = {
+                            val shift = kotlin.math.round(dragDistance / dragThreshold).toInt()
+                            dragDistance = 0f
+                            if (shift != 0) onDragSwap(shift)
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            dragDistance += amount.x
+                        },
+                    )
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            value?.toString() ?: "随机",
+            color = if (value == null) Purple else ComposeColor(0xFFFFD23F),
+            fontSize = if (value == null) 9.sp else 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -1080,7 +1346,23 @@ private fun ChartPlayer(
         }
     }
 
-    Column(modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+    Column(
+        modifier.fillMaxWidth()
+            .padding(horizontal = 18.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        if (configExpanded) {
+            PlayerConfigBox(
+                settings = settings,
+                isSp = data.chart.mode != "DP",
+                expanded = true,
+                onExpandedChange = { next ->
+                    if (!next) configExpanded = false
+                },
+                onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
+            )
+            Spacer(Modifier.height(8.dp))
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -1088,7 +1370,7 @@ private fun ChartPlayer(
                     buildAnnotatedString {
                         withStyle(SpanStyle(color = Muted)) { append("NOTES ") }
                         withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/$totalNotes") }
-                        withStyle(SpanStyle(color = Muted)) { append(" · Measure ") }
+                        withStyle(SpanStyle(color = Muted)) { append(" · MEASURE ") }
                         withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/$totalMeasures") }
                     },
                     fontSize = 10.sp,
@@ -1160,7 +1442,7 @@ private fun ChartPlayer(
         )
 
         Box(
-            Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(18.dp)).background(PlayerBackground),
+            Modifier.fillMaxWidth().height(520.dp).background(PlayerBackground),
         ) {
             ChartCanvas(
                 data = data,
@@ -1170,28 +1452,27 @@ private fun ChartPlayer(
                 showBpmChanges = settings.showBpmChanges,
                 showMeasureNumbers = settings.showMeasureNumbers,
                 side = settings.side,
-                mirror = settings.mirror,
+                playOption = settings.safePlayOption,
+                randomMapping1P = settings.safeRandomMapping1P,
+                randomMapping2P = settings.safeRandomMapping2P,
                 playing = playing,
                 onCurrentBeatChange = { currentBeat = it.coerceIn(0f, duration) },
                 modifier = Modifier.fillMaxSize(),
             )
-            if (data.chart.mode == "DP") {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("1P", color = ComposeColor.White.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text("2P", color = ComposeColor.White.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
         }
-        PlayerConfigBox(
-            settings = settings,
-            isSp = data.chart.mode != "DP",
-            expanded = configExpanded,
-            onExpandedChange = { configExpanded = it },
-            onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
-        )
+        if (!configExpanded) {
+            Spacer(Modifier.height(8.dp))
+            PlayerConfigBox(
+                settings = settings,
+                isSp = data.chart.mode != "DP",
+                expanded = false,
+                onExpandedChange = {
+                    configExpanded = it
+                    if (it) playing = false
+                },
+                onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
+            )
+        }
         if (!data.parsed) Text(data.parserMessage ?: "当前谱面格式尚未完成解析。", color = Orange, fontSize = 10.sp)
     }
 }
@@ -1205,7 +1486,9 @@ private fun ChartCanvas(
     showBpmChanges: Boolean,
     showMeasureNumbers: Boolean,
     side: String,
-    mirror: Boolean,
+    playOption: String,
+    randomMapping1P: List<Int>,
+    randomMapping2P: List<Int>,
     playing: Boolean,
     onCurrentBeatChange: (Float) -> Unit,
     modifier: Modifier,
@@ -1345,10 +1628,22 @@ private fun ChartCanvas(
             val endY = judgeY - (noteEndBeat - currentBeat) * pixelsPerBeat
             if (maxOf(y, endY) < -70f || minOf(y, endY) > size.height + 70f) return@forEach
             val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
-            val logicalLane = if (isSp && mirror && rawLane > 0) 8 - rawLane else rawLane
+            fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (playOption) {
+                "MIRROR" -> 8 - lane
+                "RANDOM" -> (mapping.indexOf(lane).takeIf { it >= 0 } ?: (lane - 1)) + 1
+                else -> lane
+            }
+            val logicalLane = if (isSp && rawLane > 0) {
+                mappedKeyLane(rawLane, if (side == "1P") randomMapping1P else randomMapping2P)
+            } else rawLane
             val displayLane = when {
                 isSp && side == "2P" -> if (logicalLane == 0) 7 else logicalLane - 1
-                !isSp && rawLane >= 8 -> 23 - rawLane
+                !isSp && rawLane >= 8 -> if (rawLane == 8) {
+                    15
+                } else {
+                    15 - mappedKeyLane(rawLane - 8, randomMapping2P)
+                }
+                !isSp && rawLane in 1..7 -> mappedKeyLane(rawLane, randomMapping1P)
                 else -> logicalLane
             }
             val laneIndex = displayLane.coerceIn(0, laneCount - 1)

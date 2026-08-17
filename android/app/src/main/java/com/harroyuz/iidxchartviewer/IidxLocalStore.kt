@@ -104,7 +104,11 @@ class IidxLocalStore(context: Context) {
         showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
         showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),
         side = preferences.getString("player_side", "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
-        mirror = preferences.getBoolean("player_mirror", false),
+        playOption = preferences.getString("player_option", null)
+            ?.takeIf { it == "NONE" || it == "MIRROR" || it == "RANDOM" }
+            ?: if (preferences.getBoolean("player_mirror", false)) "MIRROR" else "NONE",
+        randomMapping1P = loadRandomMapping("player_random_1p"),
+        randomMapping2P = loadRandomMapping("player_random_2p"),
     )
 
     fun savePlayerSettings(settings: PlayerSettings) {
@@ -114,9 +118,18 @@ class IidxLocalStore(context: Context) {
             .putBoolean("player_show_bpm_changes", settings.showBpmChanges)
             .putBoolean("player_show_measure_numbers", settings.showMeasureNumbers)
             .putString("player_side", settings.side)
-            .putBoolean("player_mirror", settings.mirror)
+            .putString("player_option", settings.safePlayOption)
+            .putBoolean("player_mirror", settings.safePlayOption == "MIRROR")
+            .putString("player_random_1p", settings.safeRandomMapping1P.joinToString(","))
+            .putString("player_random_2p", settings.safeRandomMapping2P.joinToString(","))
             .apply()
     }
+
+    private fun loadRandomMapping(key: String): List<Int> = preferences.getString(key, null)
+        ?.split(',')
+        ?.mapNotNull { it.toIntOrNull() }
+        ?.takeIf { it.size == 7 && it.toSet() == (1..7).toSet() }
+        ?: (1..7).toList()
 
     fun hasChartData(chartId: String): Boolean = chartCacheFile(chartId).isFile
 

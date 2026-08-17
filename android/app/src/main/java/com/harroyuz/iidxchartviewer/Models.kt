@@ -150,7 +150,18 @@ data class PlayerSettings(
     val showBpmChanges: Boolean = true,
     val showMeasureNumbers: Boolean = true,
     val side: String = "1P",
-    val mirror: Boolean = false,
+    val playOption: String = "NONE",
+    val randomMapping1P: List<Int> = (1..7).toList(),
+    val randomMapping2P: List<Int> = (1..7).toList(),
 ) {
     val safeSpeed: Int get() = speed.coerceIn(1, 50)
+    val safePlayOption: String get() = playOption.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"
+    val safeRandomMapping1P: List<Int> get() = normalizeRandomMapping(randomMapping1P)
+    val safeRandomMapping2P: List<Int> get() = normalizeRandomMapping(randomMapping2P)
+}
+
+private fun normalizeRandomMapping(mapping: List<Int>): List<Int> {
+    val valid = mapping.filter { it in 1..7 }.distinct().toMutableList()
+    (1..7).forEach { value -> if (value !in valid) valid += value }
+    return valid.take(7)
 }
