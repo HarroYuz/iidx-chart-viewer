@@ -506,7 +506,10 @@ private fun ChartBrowserScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(modifier = Modifier.width(180.dp)) {
+            ModalDrawerSheet(
+                modifier = Modifier.width(180.dp),
+                drawerShape = RoundedCornerShape(0.dp),
+            ) {
                 Column(Modifier.fillMaxSize()) {
                     Text(
                         "菜单",
