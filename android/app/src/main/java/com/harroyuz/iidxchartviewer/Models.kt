@@ -50,38 +50,6 @@ data class TextageChartData(
         ?.takeIf { it > 0f }
         ?: bpm
 
-    /**
-     * Converts musical beat position to the vertical scroll coordinate used
-     * by the player. BPM changes stretch/compress later sections so a BPM
-     * change is visible in the note spacing as well as in playback timing.
-     */
-    fun scrollBeatAt(beat: Float): Float {
-        val target = beat.coerceAtLeast(0f)
-        val baseBpm = bpm.coerceAtLeast(1f)
-        var position = 0f
-        var segmentStart = 0f
-        var segmentBpm = baseBpm
-        effectiveBpmChanges.dropWhile { it.beat <= 0f }.forEach { change ->
-            if (change.beat >= target) return@forEach
-            position += (change.beat - segmentStart).coerceAtLeast(0f) * segmentBpm / baseBpm
-            segmentStart = change.beat
-            segmentBpm = change.bpm.coerceAtLeast(1f)
-        }
-        position += (target - segmentStart).coerceAtLeast(0f) * segmentBpm / baseBpm
-        return position
-    }
-
-    fun beatAtScrollBeat(scrollBeat: Float): Float {
-        val target = scrollBeat.coerceAtLeast(0f)
-        var low = 0f
-        var high = durationBeats.coerceAtLeast(4f)
-        repeat(32) {
-            val middle = (low + high) / 2f
-            if (scrollBeatAt(middle) < target) low = middle else high = middle
-        }
-        return high.coerceIn(0f, durationBeats.coerceAtLeast(4f))
-    }
-
     fun secondsAtBeat(beat: Float): Float {
         val target = beat.coerceAtLeast(0f)
         val changes = effectiveBpmChanges

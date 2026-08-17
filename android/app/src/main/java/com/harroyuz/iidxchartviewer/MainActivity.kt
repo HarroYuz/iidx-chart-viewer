@@ -1115,9 +1115,9 @@ private fun ChartCanvas(
     modifier: Modifier,
 ) {
     val laneCount = if (data.chart.mode == "DP") 16 else 8
-    // The chart's scroll coordinate includes BPM changes. This makes the
-    // distance between notes and the visible scroll speed change at the same
-    // places as the source chart.
+    // Keep note geometry in musical beat coordinates. BPM changes are applied
+    // by playback timing, which changes the visible scroll speed without
+    // stretching the chart a second time and creating gaps between measures.
     val pixelsPerBeat = 16f * speed
     val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
@@ -1126,10 +1126,7 @@ private fun ChartCanvas(
         modifier.pointerInput(data.chart.id, speed) {
             detectVerticalDragGestures { _, dragAmount ->
                 if (!latestPlaying) {
-                    val currentScrollBeat = data.scrollBeatAt(latestCurrentBeat)
-                    latestOnCurrentBeatChange(
-                        data.beatAtScrollBeat(currentScrollBeat - dragAmount / pixelsPerBeat),
-                    )
+                    latestOnCurrentBeatChange(latestCurrentBeat - dragAmount / pixelsPerBeat)
                 }
             }
         },
@@ -1180,16 +1177,15 @@ private fun ChartCanvas(
             )
         }
         if (showBarLines) {
-            val currentScrollBeat = data.scrollBeatAt(currentBeat)
             val firstMeasure = (
-                data.measureAt(data.beatAtScrollBeat(currentScrollBeat - size.height / pixelsPerBeat)) - 2
+                data.measureAt(currentBeat - size.height / pixelsPerBeat) - 2
             ).coerceAtLeast(1)
             val lastMeasure = (
-                data.measureAt(data.beatAtScrollBeat(currentScrollBeat + size.height / pixelsPerBeat)) + 2
+                data.measureAt(currentBeat + size.height / pixelsPerBeat) + 2
             ).coerceAtMost(data.measureCount())
             for (measure in firstMeasure..lastMeasure) {
                 val measureBeat = data.measureStart(measure)
-                val y = judgeY - (data.scrollBeatAt(measureBeat) - currentScrollBeat) * pixelsPerBeat
+                val y = judgeY - (measureBeat - currentBeat) * pixelsPerBeat
                 if (y in -2f..size.height + 2f) {
                     drawLine(
                         ComposeColor(0xFF444756),
@@ -1201,14 +1197,12 @@ private fun ChartCanvas(
             }
         }
         drawLine(PlayerRed, Offset(0f, judgeY), Offset(size.width, judgeY), strokeWidth = 5f)
-        val currentScrollBeat = data.scrollBeatAt(currentBeat)
         data.notes.forEach { note ->
             val noteEndBeat = note.beat + note.holdBeats
             if (noteEndBeat < currentBeat - 0.001f) return@forEach
             val visibleStartBeat = maxOf(note.beat, currentBeat)
-            val visibleStartScrollBeat = data.scrollBeatAt(visibleStartBeat)
-            val y = judgeY - (visibleStartScrollBeat - currentScrollBeat) * pixelsPerBeat
-            val endY = judgeY - (data.scrollBeatAt(noteEndBeat) - currentScrollBeat) * pixelsPerBeat
+            val y = judgeY - (visibleStartBeat - currentBeat) * pixelsPerBeat
+            val endY = judgeY - (noteEndBeat - currentBeat) * pixelsPerBeat
             if (maxOf(y, endY) < -70f || minOf(y, endY) > size.height + 70f) return@forEach
             val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
             val logicalLane = if (isSp && mirror && rawLane > 0) 8 - rawLane else rawLane

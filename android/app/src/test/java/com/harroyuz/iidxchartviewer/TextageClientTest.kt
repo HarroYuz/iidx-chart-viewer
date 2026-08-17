@@ -97,7 +97,6 @@ class TextageClientTest {
         assertEquals(2f, parsed.measureLengths[1], 0.001f)
         assertEquals(2f, parsed.measureLengths[2], 0.001f)
         assertTrue(parsed.secondsAtBeat(5f) > parsed.secondsAtBeat(4f))
-        assertTrue(parsed.scrollBeatAt(5f) > parsed.scrollBeatAt(4f))
     }
 
     @Test
