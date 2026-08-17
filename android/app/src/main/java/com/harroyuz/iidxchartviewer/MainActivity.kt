@@ -463,12 +463,21 @@ private fun ChartBrowserScreen(
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
+    val versionOrder = state.charts
+        .asSequence()
+        .filter { it.mode == mode && it.version.isNotBlank() }
+        .mapNotNull { chart ->
+            val index = chart.textageUrl
+                ?.let { Regex("/score/(\\d+)/").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
+            index?.let { chart.version to it }
+        }
+        .toMap()
     val versionOptions = state.charts
         .asSequence()
         .filter { it.mode == mode && it.version.isNotBlank() }
         .map { it.version }
         .distinct()
-        .sortedWith(compareBy<String>({ versionNumber(it) }, { it.lowercase(Locale.US) }))
+        .sortedWith(compareBy<String>({ versionOrder[it] ?: versionNumber(it) }, { it.lowercase(Locale.US) }))
         .toList()
     val levelOptions = state.charts
         .asSequence()
