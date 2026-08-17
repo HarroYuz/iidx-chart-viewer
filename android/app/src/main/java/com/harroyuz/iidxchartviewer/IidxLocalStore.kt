@@ -99,7 +99,7 @@ class IidxLocalStore(context: Context) {
     }
 
     fun loadPlayerSettings(): PlayerSettings = PlayerSettings(
-        speed = preferences.getInt("player_speed", 1).coerceIn(1, 50),
+        speed = preferences.getInt("player_speed", 1).coerceIn(1, 100),
         showBarLines = preferences.getBoolean("player_show_bar_lines", true),
         showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
         showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),

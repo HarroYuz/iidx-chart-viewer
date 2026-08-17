@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -1076,10 +1077,10 @@ private fun PlayerConfigBox(
                 OutlinedTextField(
                     value = speedInput,
                     onValueChange = { value ->
-                        val digits = value.filter(Char::isDigit).take(2)
+                        val digits = value.filter(Char::isDigit).take(3)
                         speedInput = digits
                         digits.toIntOrNull()?.let { next ->
-                            onSettingsChange(settings.copy(speed = next.coerceIn(1, 50)))
+                            onSettingsChange(settings.copy(speed = next.coerceIn(1, 100)))
                         }
                     },
                     modifier = Modifier.width(46.dp).height(46.dp),
@@ -1088,7 +1089,7 @@ private fun PlayerConfigBox(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 TextButton(
-                    onClick = { onSettingsChange(settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(50))) },
+                    onClick = { onSettingsChange(settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(100))) },
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("+", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
@@ -1605,13 +1606,14 @@ private fun ChartCanvas(
             }
         }
         drawLine(PlayerRed, Offset(0f, judgeY), Offset(size.width, judgeY), strokeWidth = 5f)
-        data.notes.forEach { note ->
+        clipRect(0f, 0f, size.width, size.height) {
+            data.notes.forEach { note ->
             val noteEndBeat = note.beat + note.holdBeats
             if (noteEndBeat < currentBeat - 0.001f) return@forEach
             val visibleStartBeat = maxOf(note.beat, currentBeat)
             val y = judgeY - (visibleStartBeat - currentBeat) * pixelsPerBeat
             val endY = judgeY - (noteEndBeat - currentBeat) * pixelsPerBeat
-            if (maxOf(y, endY) < -70f || minOf(y, endY) > size.height + 70f) return@forEach
+            if (maxOf(y, endY) < 0f || minOf(y, endY) > size.height) return@forEach
             val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
             fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (playOption) {
                 "MIRROR" -> 8 - lane
@@ -1651,21 +1653,27 @@ private fun ChartCanvas(
                 else -> PlayerSkyBlue
             }
             if (note.holdBeats > 0f) {
-                val holdHeight = (y - endY).coerceAtLeast(8f)
+                val holdTop = minOf(y, endY).coerceIn(0f, size.height)
+                val holdBottom = maxOf(y, endY).coerceIn(0f, size.height)
+                val holdHeight = holdBottom - holdTop
                 val holdWidth = width * .88f
-                drawRect(
-                    color = noteColor.copy(alpha = .58f),
-                    topLeft = Offset(left + (width - holdWidth) / 2f, endY),
-                    size = Size(holdWidth, holdHeight),
-                )
-                drawRoundRect(
-                    color = noteColor,
-                    topLeft = Offset(left, endY - 6f),
-                    size = Size(width, 12f),
-                    cornerRadius = CornerRadius(5f),
-                )
+                if (holdHeight > 0f) {
+                    drawRect(
+                        color = noteColor.copy(alpha = .58f),
+                        topLeft = Offset(left + (width - holdWidth) / 2f, holdTop),
+                        size = Size(holdWidth, holdHeight),
+                    )
+                }
+                if (endY in 0f..size.height) {
+                    drawRoundRect(
+                        color = noteColor,
+                        topLeft = Offset(left, endY - 6f),
+                        size = Size(width, 12f),
+                        cornerRadius = CornerRadius(5f),
+                    )
+                }
             }
-            if (note.beat >= currentBeat - 0.001f) {
+            if (note.beat >= currentBeat - 0.001f && y in 0f..size.height) {
                 drawRoundRect(
                     color = noteColor,
                     topLeft = Offset(left, y - 6f),
@@ -1673,13 +1681,14 @@ private fun ChartCanvas(
                     cornerRadius = CornerRadius(5f),
                 )
             }
-            if (note.holdBeats > 0f) {
+            if (note.holdBeats > 0f && endY in 0f..size.height) {
                 drawRoundRect(
                     color = noteColor,
                     topLeft = Offset(left, endY - 6f),
                     size = Size(width, 12f),
                     cornerRadius = CornerRadius(5f),
                 )
+            }
             }
         }
     }

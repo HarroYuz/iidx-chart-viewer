@@ -154,7 +154,7 @@ data class PlayerSettings(
     val randomMapping1P: List<Int> = (1..7).toList(),
     val randomMapping2P: List<Int> = (1..7).toList(),
 ) {
-    val safeSpeed: Int get() = speed.coerceIn(1, 50)
+    val safeSpeed: Int get() = speed.coerceIn(1, 100)
     val safePlayOption: String get() = playOption.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"
     val safeRandomMapping1P: List<Int> get() = normalizeRandomMapping(randomMapping1P)
     val safeRandomMapping2P: List<Int> get() = normalizeRandomMapping(randomMapping2P)
