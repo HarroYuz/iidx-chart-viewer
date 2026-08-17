@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                     message = message,
                     localCatalogPresent = localCatalogPresent,
                     onDismissMessage = { message = null },
-                    onLogin = ::openBjmLogin,
+                    onLogin = { message = "BJM接入能力开发中" },
                     onOpenBjmProfile = {},
                     onSyncBjm = ::syncBjm,
                     onRefreshTextage = ::refreshTextage,
