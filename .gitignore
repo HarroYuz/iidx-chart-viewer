@@ -1,0 +1,22 @@
+# Node/Vite dependencies and local build output
+node_modules/
+dist/
+
+# Android/Gradle local state and generated artifacts
+android/.gradle/
+android/**/build/
+android/local.properties
+.idea/
+*.iml
+
+# Local OS/editor files
+.DS_Store
+.codex/
+
+# Local GTDR reverse-engineering reference; keep it available locally but
+# never publish the extracted/decompiled APK contents.
+reference/
+
+# Distributable packages are generated from the source, not tracked
+*.apk
+*.aab
