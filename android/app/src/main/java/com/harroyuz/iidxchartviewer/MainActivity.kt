@@ -1547,7 +1547,7 @@ private fun ChartCanvas(
         } else {
             (dpLeftWidth + dpGapUnits + laneWidths.slice(8 until boundary).sum()) * unit
         }
-        val judgeY = size.height * .84f
+        val judgeY = size.height * .92f
 
         drawRect(PlayerBackground)
         if (!isSp) {
