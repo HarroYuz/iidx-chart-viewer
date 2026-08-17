@@ -1185,7 +1185,7 @@ private fun ChartCanvas(
                         ComposeColor(0xFF444756),
                         Offset(0f, y),
                         Offset(size.width, y),
-                        strokeWidth = if (measure % 4 == 1) 2f else 1f,
+                        strokeWidth = if (measure % 4 == 1) 3f else 2f,
                     )
                 }
             }
