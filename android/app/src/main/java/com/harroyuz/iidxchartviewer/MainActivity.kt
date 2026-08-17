@@ -1259,6 +1259,13 @@ private fun RandomLaneButton(
     val labelTextSize = with(LocalDensity.current) { if (value == null) 9.sp.toPx() else 13.sp.toPx() }
     Box(
         modifier
+            .graphicsLayer {
+                if (value != null) {
+                    translationX = dragDistance
+                    alpha = if (dragDistance == 0f) 1f else .5f
+                }
+            }
+            .zIndex(if (value != null && dragDistance != 0f) 1f else 0f)
             .size(if (value == null) 36.dp else 28.dp)
             .clip(buttonShape)
             .background(if (value == null) Panel else if (value % 2 == 1) ComposeColor.White else ComposeColor(0xFF252535))
@@ -1280,14 +1287,7 @@ private fun RandomLaneButton(
                         },
                     )
                 },
-            )
-            .graphicsLayer {
-                if (value != null) {
-                    translationX = dragDistance
-                    alpha = if (dragDistance == 0f) 1f else .5f
-                }
-            }
-            .zIndex(if (value != null && dragDistance != 0f) 1f else 0f),
+            ),
     ) {
         Canvas(Modifier.fillMaxSize()) {
             drawIntoCanvas { canvas ->
