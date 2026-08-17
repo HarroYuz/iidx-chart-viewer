@@ -568,11 +568,6 @@ private fun TextageBootstrapScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).border(1.dp, Purple, RoundedCornerShape(22.dp)),
-            contentAlignment = Alignment.Center,
-        ) { Text("谱", color = Purple, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.height(22.dp))
         Text(if (error == null) "正在准备谱面库" else "谱面库获取失败", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
