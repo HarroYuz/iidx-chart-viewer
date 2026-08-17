@@ -85,6 +85,7 @@ private val Green = ComposeColor(0xFF1B9B62)
 private val NormalBlue = ComposeColor(0xFF3179D6)
 private val PlayerBackground = ComposeColor(0xFF08090F)
 private val PlayerLane = ComposeColor(0xFF252735)
+private val PlayerCenterGap = ComposeColor(0xFF3A3D49)
 private val PlayerEdge = ComposeColor(0xFF55596A)
 private val PlayerRed = ComposeColor(0xFFFF1D2E)
 private val PlayerSkyBlue = ComposeColor(0xFF167CAF)
@@ -327,6 +328,7 @@ private fun IidxApp(
 ) {
     Scaffold(containerColor = Background) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
+            var browserMode by rememberSaveable { mutableStateOf("SP") }
             val showingBootstrap = !localCatalogPresent && (state.charts.isEmpty() || textageProgress?.initial == true)
             if (showingBootstrap) {
                 TextageBootstrapScreen(
@@ -340,6 +342,8 @@ private fun IidxApp(
                 // query, style and LazyColumn position survive a round trip.
                 ChartBrowserScreen(
                     state = state,
+                    mode = browserMode,
+                    onModeChange = { browserMode = it },
                     bjmSyncing = bjmSyncing,
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
@@ -351,13 +355,35 @@ private fun IidxApp(
                     modifier = Modifier.alpha(if (selectedChart == null) 1f else 0f),
                 )
                 if (selectedChart != null) {
+                    val family = state.charts
+                        .filter {
+                            it.mode == selectedChart.mode &&
+                                it.title == selectedChart.title &&
+                                it.subtitle == selectedChart.subtitle &&
+                                it.composer == selectedChart.composer
+                        }
+                        .groupBy { it.difficulty }
+                        .values
+                        .mapNotNull { sameDifficulty ->
+                            sameDifficulty.maxWithOrNull(
+                                compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                            )
+                        }
+                        .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
                     ChartDetailScreen(
                         chart = selectedChart,
+                        siblingCharts = family,
                         chartData = chartData,
                         loading = chartLoading,
                         playerSettings = playerSettings,
                         onBack = onBack,
                         onRetry = onRetryChart,
+                        mode = browserMode,
+                        onStyleToggle = {
+                            browserMode = if (browserMode == "SP") "DP" else "SP"
+                            onBack()
+                        },
+                        onOpenChart = onOpenChart,
                         onPlayerSettingsChange = onPlayerSettingsChange,
                     )
                 }
@@ -370,6 +396,8 @@ private fun IidxApp(
 @Composable
 private fun ChartBrowserScreen(
     state: IidxAppState,
+    mode: String,
+    onModeChange: (String) -> Unit,
     bjmSyncing: Boolean,
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
@@ -381,7 +409,6 @@ private fun ChartBrowserScreen(
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
-    var mode by rememberSaveable { mutableStateOf("SP") }
     val filteredCharts = state.charts.filter {
         it.mode == mode && (query.isBlank() || "${it.title} ${it.subtitle} ${it.genre} ${it.composer}".contains(query, ignoreCase = true))
     }
@@ -445,7 +472,7 @@ private fun ChartBrowserScreen(
                 Text("Style：", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(5.dp))
                 OutlinedButton(
-                    onClick = { mode = if (mode == "SP") "DP" else "SP" },
+                    onClick = { onModeChange(if (mode == "SP") "DP" else "SP") },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     modifier = Modifier.height(36.dp),
                 ) {
@@ -645,7 +672,11 @@ private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modi
 }
 
 @Composable
-private fun DifficultyChip(chart: IidxChart, onOpenChart: (IidxChart) -> Unit) {
+private fun DifficultyChip(
+    chart: IidxChart,
+    onOpenChart: (IidxChart) -> Unit,
+    selected: Boolean = false,
+) {
     val accent = difficultyColor(chart.difficulty)
     val shape = RoundedCornerShape(14.dp)
     val available = chart.textageUrl != null
@@ -655,7 +686,11 @@ private fun DifficultyChip(chart: IidxChart, onOpenChart: (IidxChart) -> Unit) {
             .background(if (available) accent.copy(alpha = .13f) else Background)
             .then(
                 if (available) {
-                    Modifier.border(1.dp, accent.copy(alpha = .55f), shape)
+                    Modifier.border(
+                        if (selected) 2.dp else 1.dp,
+                        accent.copy(alpha = if (selected) .95f else .55f),
+                        shape,
+                    )
                 } else {
                     Modifier.drawBehind {
                         drawRoundRect(
@@ -686,44 +721,81 @@ private fun difficultyColor(value: String): ComposeColor = when (value) {
 @Composable
 private fun ChartDetailScreen(
     chart: IidxChart,
+    siblingCharts: List<IidxChart>,
     chartData: TextageChartData?,
     loading: Boolean,
     playerSettings: PlayerSettings,
     onBack: () -> Unit,
     onRetry: () -> Unit,
+    mode: String,
+    onStyleToggle: () -> Unit,
+    onOpenChart: (IidxChart) -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("‹ 返回", color = Purple) }
-            Text("谱面浏览", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("谱面浏览", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("Style：", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(4.dp))
+            OutlinedButton(
+                onClick = onStyleToggle,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier.height(34.dp),
+            ) { Text("[$mode]", color = Purple, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(3.dp))
+                Text(chart.title, color = Ink, fontSize = 27.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (chart.subtitle.isNotBlank()) {
+                    Text(chart.subtitle, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(chart.version.ifBlank { "—" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "BPM ${chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }}",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        "NOTES ${(chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 } ?: "—"}",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Text(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(3.dp))
-            Text(chart.title, color = Ink, fontSize = 27.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (chart.subtitle.isNotBlank()) {
-                Text(chart.subtitle, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(9.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DetailValue("BPM", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" })
-                Spacer(Modifier.width(18.dp))
-                DetailValue("NOTES", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—")
-            }
-            Spacer(Modifier.height(5.dp))
+            Spacer(Modifier.height(7.dp))
             Text(
                 "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
                 color = difficultyColor(chart.difficulty),
                 fontSize = 10.sp,
                 letterSpacing = .8.sp,
             )
+            Spacer(Modifier.height(7.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                siblingCharts.forEach { sibling ->
+                    DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id)
+                }
+            }
         }
         Spacer(Modifier.height(16.dp))
 
@@ -958,6 +1030,15 @@ private fun ChartPlayer(
                 onCurrentBeatChange = { currentBeat = it.coerceIn(0f, duration) },
                 modifier = Modifier.fillMaxSize(),
             )
+            if (data.chart.mode == "DP") {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("1P", color = ComposeColor.White.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("2P", color = ComposeColor.White.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         PlayerConfigBox(
             settings = settings,
@@ -983,7 +1064,10 @@ private fun ChartCanvas(
     modifier: Modifier,
 ) {
     val laneCount = if (data.chart.mode == "DP") 16 else 8
-    val pixelsPerBeat = 14f + speed * 2.0f
+    // IIDX's scroll velocity is proportional to BPM x Hi-Speed. Playback
+    // already advances beats using BPM, so the lane distance only needs to
+    // scale linearly with the user's Hi-Speed value.
+    val pixelsPerBeat = 16f * speed
     Canvas(
         modifier.pointerInput(data.chart.id, playing, speed) {
             detectVerticalDragGestures { _, dragAmount ->
@@ -992,21 +1076,48 @@ private fun ChartCanvas(
         },
     ) {
         val isSp = data.chart.mode != "DP"
-        val unit = if (isSp) size.width / 8.5f else size.width / laneCount
+        val dpGapUnits = 1.5f
         val laneWidths = if (isSp) {
             if (side == "2P") List(7) { 1f } + listOf(1.5f) else listOf(1.5f) + List(7) { 1f }
-        } else List(laneCount) { 1f }
+        } else listOf(1.5f) + List(7) { 1f } + List(7) { 1f } + listOf(1.5f)
+        val unit = if (isSp) size.width / laneWidths.sum() else size.width / (laneWidths.sum() + dpGapUnits)
         val laneLefts = laneWidths.runningFold(0f) { sum, width -> sum + width * unit }.dropLast(1)
+        val dpLeftWidth = laneWidths.take(8).sum()
+        fun dpLaneStart(lane: Int): Float = if (lane < 8) {
+            laneWidths.take(lane).sum() * unit
+        } else {
+            (dpLeftWidth + dpGapUnits + laneWidths.slice(8 until lane).sum()) * unit
+        }
+        fun dpBoundaryX(boundary: Int): Float = if (boundary <= 8) {
+            laneWidths.take(boundary).sum() * unit
+        } else {
+            (dpLeftWidth + dpGapUnits + laneWidths.slice(8 until boundary).sum()) * unit
+        }
         val judgeY = size.height * .84f
 
         drawRect(PlayerBackground)
+        if (!isSp) {
+            drawRect(
+                color = PlayerCenterGap,
+                topLeft = Offset(dpLeftWidth * unit, 0f),
+                size = Size(dpGapUnits * unit, size.height),
+            )
+        }
         for (lane in 0..laneCount) {
-            val x = if (isSp) laneLefts.getOrNull(lane) ?: size.width else lane * unit
+            val x = if (isSp) laneLefts.getOrNull(lane) ?: size.width else dpBoundaryX(lane)
             drawLine(
                 color = if (lane == 0 || lane == laneCount) PlayerEdge else PlayerLane,
                 start = Offset(x, 0f),
                 end = Offset(x, size.height),
                 strokeWidth = if (lane == 0 || lane == laneCount) 2f else 1f,
+            )
+        }
+        if (!isSp) {
+            drawLine(
+                color = PlayerEdge,
+                start = Offset((dpLeftWidth + dpGapUnits) * unit, 0f),
+                end = Offset((dpLeftWidth + dpGapUnits) * unit, size.height),
+                strokeWidth = 2f,
             )
         }
         if (showBarLines) {
@@ -1029,11 +1140,19 @@ private fun ChartCanvas(
             val displayLane = if (isSp && side == "2P") {
                 if (logicalLane == 0) 7 else logicalLane - 1
             } else logicalLane
-            val laneWidth = laneWidths.getOrElse(displayLane.coerceIn(0, laneCount - 1)) { 1f } * unit
-            val left = laneLefts.getOrElse(displayLane.coerceIn(0, laneCount - 1)) { 0f } + laneWidth * .12f
+            val laneIndex = displayLane.coerceIn(0, laneCount - 1)
+            val laneWidth = laneWidths.getOrElse(laneIndex) { 1f } * unit
+            val laneStart = if (isSp) {
+                laneLefts.getOrElse(laneIndex) { 0f }
+            } else {
+                dpLaneStart(laneIndex)
+            }
+            val left = laneStart + laneWidth * .12f
             val width = laneWidth * .76f
-            val noteColor = if (!isSp) {
-                listOf(Cyan, Purple, ComposeColor(0xFFFFD37A), Green, ComposeColor(0xFFFF8FB3), Cyan, Purple)[rawLane % 7]
+            val noteColor = if (!isSp) when (rawLane % 8) {
+                0 -> PlayerRed
+                1, 3, 5, 7 -> ComposeColor.White
+                else -> PlayerSkyBlue
             } else when {
                 rawLane == 0 -> PlayerRed
                 rawLane % 2 == 1 -> ComposeColor.White
