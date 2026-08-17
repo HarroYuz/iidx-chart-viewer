@@ -147,6 +147,8 @@ data class TextageSyncProgress(
 data class PlayerSettings(
     val speed: Int = 1,
     val showBarLines: Boolean = true,
+    val showBpmChanges: Boolean = true,
+    val showMeasureNumbers: Boolean = true,
     val side: String = "1P",
     val mirror: Boolean = false,
 ) {

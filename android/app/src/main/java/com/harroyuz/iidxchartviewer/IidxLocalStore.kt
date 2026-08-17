@@ -8,7 +8,7 @@ import java.io.File
 
 class IidxLocalStore(context: Context) {
     private companion object {
-        const val CHART_CACHE_VERSION = 5
+        const val CHART_CACHE_VERSION = 6
         const val CATALOG_HEADER = "#iidx-catalog-v3"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 2
     }
@@ -101,6 +101,8 @@ class IidxLocalStore(context: Context) {
     fun loadPlayerSettings(): PlayerSettings = PlayerSettings(
         speed = preferences.getInt("player_speed", 1).coerceIn(1, 50),
         showBarLines = preferences.getBoolean("player_show_bar_lines", true),
+        showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
+        showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),
         side = preferences.getString("player_side", "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
         mirror = preferences.getBoolean("player_mirror", false),
     )
@@ -109,6 +111,8 @@ class IidxLocalStore(context: Context) {
         preferences.edit()
             .putInt("player_speed", settings.safeSpeed)
             .putBoolean("player_show_bar_lines", settings.showBarLines)
+            .putBoolean("player_show_bpm_changes", settings.showBpmChanges)
+            .putBoolean("player_show_measure_numbers", settings.showMeasureNumbers)
             .putString("player_side", settings.side)
             .putBoolean("player_mirror", settings.mirror)
             .apply()

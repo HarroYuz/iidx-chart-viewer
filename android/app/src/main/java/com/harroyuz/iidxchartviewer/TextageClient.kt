@@ -802,7 +802,7 @@ internal object TextageParser {
                         result += chartNote(
                             measureStartBeat,
                             measureBeatLength,
-                            offset.toFloat() / (length * 2f),
+                            offset.toFloat() / length,
                             laneOffset + lane,
                         )
                     }

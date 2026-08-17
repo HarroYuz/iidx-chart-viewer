@@ -131,4 +131,32 @@ class TextageClientTest {
         assertTrue(parsed.notes.none { it.lane == 0 })
         assertTrue(parsed.notes.any { it.beat == 4f && it.lane == 1 })
     }
+
+    @Test
+    fun alignsRawTextageNotesWithTempoChangePosition() {
+        val source = """
+            measure=9;
+            tc[9]=["1400","155112"];
+            if(k){
+                sp[9]="0000000000000057";
+            }else{
+                sp[9]="";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "tempo-note-alignment-test",
+            title = "tempo-note-alignment-test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 1,
+            version = "test",
+            bpm = "140",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertEquals(35.5f, parsed.notes.first().beat, 0.001f)
+        assertEquals(35.5f, parsed.bpmChanges.last().beat, 0.001f)
+    }
 }

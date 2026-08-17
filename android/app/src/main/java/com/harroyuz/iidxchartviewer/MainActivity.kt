@@ -2,6 +2,8 @@ package com.harroyuz.iidxchartviewer
 
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -59,7 +61,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +96,8 @@ private val PlayerCenterGap = ComposeColor(0xFF3A3D49)
 private val PlayerEdge = ComposeColor(0xFF55596A)
 private val PlayerRed = ComposeColor(0xFFFF1D2E)
 private val PlayerSkyBlue = ComposeColor(0xFF28A9E0)
+private val PlayerBpmGreen = ComposeColor(0xFF63D38A)
+private val PlayerMeasureText = ComposeColor(0xFFB7BAC6)
 private const val TEXTAGE_SYNC_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
 class MainActivity : ComponentActivity() {
@@ -924,6 +932,24 @@ private fun PlayerConfigBox(
                     )
                 }
             }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("变速线", color = Muted, fontSize = 11.sp)
+                Switch(
+                    checked = settings.showBpmChanges,
+                    onCheckedChange = { onSettingsChange(settings.copy(showBpmChanges = it)) },
+                    modifier = Modifier.padding(start = 3.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text("小节序号", color = Muted, fontSize = 11.sp)
+                Switch(
+                    checked = settings.showMeasureNumbers,
+                    onCheckedChange = { onSettingsChange(settings.copy(showMeasureNumbers = it)) },
+                    modifier = Modifier.padding(start = 3.dp),
+                )
+            }
         }
     }
 }
@@ -1075,6 +1101,8 @@ private fun ChartPlayer(
                 currentBeat = currentBeat,
                 speed = safeSpeed,
                 showBarLines = settings.showBarLines,
+                showBpmChanges = settings.showBpmChanges,
+                showMeasureNumbers = settings.showMeasureNumbers,
                 side = settings.side,
                 mirror = settings.mirror,
                 playing = playing,
@@ -1108,6 +1136,8 @@ private fun ChartCanvas(
     currentBeat: Float,
     speed: Int,
     showBarLines: Boolean,
+    showBpmChanges: Boolean,
+    showMeasureNumbers: Boolean,
     side: String,
     mirror: Boolean,
     playing: Boolean,
@@ -1119,6 +1149,7 @@ private fun ChartCanvas(
     // by playback timing, which changes the visible scroll speed without
     // stretching the chart a second time and creating gaps between measures.
     val pixelsPerBeat = 16f * speed
+    val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
     val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
     val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
@@ -1126,7 +1157,7 @@ private fun ChartCanvas(
         modifier.pointerInput(data.chart.id, speed) {
             detectVerticalDragGestures { _, dragAmount ->
                 if (!latestPlaying) {
-                    latestOnCurrentBeatChange(latestCurrentBeat - dragAmount / pixelsPerBeat)
+                    latestOnCurrentBeatChange(latestCurrentBeat + dragAmount / pixelsPerBeat)
                 }
             }
         },
@@ -1176,7 +1207,7 @@ private fun ChartCanvas(
                 strokeWidth = 2f,
             )
         }
-        if (showBarLines) {
+        if (showBarLines || showMeasureNumbers) {
             val firstMeasure = (
                 data.measureAt(currentBeat - size.height / pixelsPerBeat) - 2
             ).coerceAtLeast(1)
@@ -1187,12 +1218,55 @@ private fun ChartCanvas(
                 val measureBeat = data.measureStart(measure)
                 val y = judgeY - (measureBeat - currentBeat) * pixelsPerBeat
                 if (y in -2f..size.height + 2f) {
+                    if (showBarLines) {
+                        drawLine(
+                            ComposeColor(0xFF444756),
+                            Offset(0f, y),
+                            Offset(size.width, y),
+                            strokeWidth = if (measure % 4 == 1) 3f else 2f,
+                        )
+                    }
+                    if (showMeasureNumbers) {
+                        drawIntoCanvas { canvas ->
+                            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                color = PlayerMeasureText.toArgb()
+                                textSize = labelTextSize
+                                typeface = Typeface.DEFAULT_BOLD
+                            }
+                            canvas.nativeCanvas.drawText(
+                                measure.toString(),
+                                4f,
+                                (y - 4f).coerceAtLeast(labelTextSize),
+                                paint,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (showBpmChanges) {
+            data.bpmChanges.filter { it.beat > 0f }.forEach { change ->
+                val y = judgeY - (change.beat - currentBeat) * pixelsPerBeat
+                if (y in -labelTextSize..size.height + labelTextSize) {
                     drawLine(
-                        ComposeColor(0xFF444756),
+                        PlayerBpmGreen,
                         Offset(0f, y),
                         Offset(size.width, y),
-                        strokeWidth = if (measure % 4 == 1) 3f else 2f,
+                        strokeWidth = 2f,
                     )
+                    drawIntoCanvas { canvas ->
+                        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = PlayerBpmGreen.toArgb()
+                            textSize = labelTextSize
+                            typeface = Typeface.DEFAULT_BOLD
+                        }
+                        canvas.nativeCanvas.drawText(
+                            "BPM ${formatPlayerBpm(change.bpm)}",
+                            labelTextSize * 4.5f,
+                            (y - 4f).coerceAtLeast(labelTextSize),
+                            paint,
+                        )
+                    }
                 }
             }
         }
