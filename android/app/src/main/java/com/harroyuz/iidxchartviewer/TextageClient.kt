@@ -95,6 +95,7 @@ class TextageException(message: String) : Exception(message)
 internal object TextageParser {
     private const val TEXTAGE_BAR_TICKS = 384
     private const val TEXTAGE_QUARTER_TICKS = 96f
+    private const val TEXTAGE_POSITION_TICKS = 32f
     private val tagPattern = Regex("(?is)<[^>]+>")
     private val scriptPattern = Regex("(?is)<script\\b[^>]*>")
     private val chartSlots = listOf(
@@ -436,7 +437,7 @@ internal object TextageParser {
     private fun decodeTextageChart(chart: IidxChart, source: String, measureTicks: Map<Int, Int>): List<ChartNote> {
         val modeBody = textageModeBody(source, chart.mode) ?: return emptyList()
         val variable = if (chart.mode == "DP") "dp" else "sp"
-        val branchNames = listOf("a", "l", "g", "kuro")
+        val branchNames = listOf("k", "a", "l", "g", "kuro")
         val branchStart = branchNames.mapNotNull { name ->
             conditionalMatch(modeBody, name)?.range?.first
         }.minOrNull() ?: modeBody.length
@@ -444,12 +445,14 @@ internal object TextageParser {
         val base = parseSparseAssignment(baseSource, variable, emptyList())
         val selectedBranch = when (chart.difficulty) {
             "A" -> "a"
-            "L" -> "kuro"
+            "L" -> "a"
             "N" -> "l"
             "B" -> "g"
-            else -> null
+            "H" -> "k"
+            else -> "k"
         }?.let { conditionalBody(modeBody, it) }
-        val measures = selectedBranch?.let { parseSparseAssignment(it, variable, base) } ?: base
+        val activeSource = selectedBranch ?: baseSource
+        val measures = parseSparseAssignment(activeSource, variable, base)
 
         val notes = ArrayList<ChartNote>()
         val arrays = if (chart.mode == "DP") listOf("sp" to 0, "dp" to 8) else listOf("sp" to 0)
@@ -460,9 +463,7 @@ internal object TextageParser {
             }
             val chargeArray = if (arrayName == "sp") "c1" else "c2"
             val chargeBase = parseChargeAssignments(baseSource, emptyMap())
-            val chargeMeasures = selectedBranch?.let {
-                parseChargeAssignments(it, chargeBase)
-            } ?: chargeBase
+            val chargeMeasures = parseChargeAssignments(activeSource, chargeBase)
             for ((measureIndex, encoded) in sideMeasures.withIndex()) {
                 if (measureIndex <= 0 || encoded.isNullOrBlank()) continue
                 val ticks = measureTicks[measureIndex] ?: TEXTAGE_BAR_TICKS
@@ -489,6 +490,14 @@ internal object TextageParser {
                 val measure = match.groupValues[1].toIntOrNull() ?: return@forEach
                 val ticks = match.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return@forEach
                 put(measure, ticks)
+            }
+        Regex("""for\s*\(\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(\d+)\s*;\s*\1\s*<=\s*(\d+)\s*;\s*\1\+\+\s*\)\s*ln\s*\[\s*\1\s*]\s*=\s*(\d+)""")
+            .findAll(source)
+            .forEach { match ->
+                val start = match.groupValues[2].toIntOrNull() ?: return@forEach
+                val end = match.groupValues[3].toIntOrNull() ?: return@forEach
+                val ticks = match.groupValues[4].toIntOrNull()?.takeIf { it > 0 } ?: return@forEach
+                for (measure in start..end) put(measure, ticks)
             }
     }
 
@@ -517,7 +526,7 @@ internal object TextageParser {
                 if (encoded.length < 3) return@forEach
                 val bpm = encoded.take(3).trim().toFloatOrNull()?.takeIf { it in 1f..1000f } ?: return@forEach
                 val position = encoded.drop(3).trim().toIntOrNull() ?: 0
-                val beat = startBeat + position / TEXTAGE_QUARTER_TICKS
+                val beat = startBeat + position / TEXTAGE_POSITION_TICKS
                 changes += BpmChange(beat, bpm)
             }
         }
@@ -625,6 +634,10 @@ internal object TextageParser {
         )
         result["c1"]!!.putAll(references["c1"].orEmpty())
         result["c2"]!!.putAll(references["c2"].orEmpty())
+
+        Regex("\\b(c[12])\\s*=\\s*\\[\\s*]\\s*;")
+            .findAll(source)
+            .forEach { match -> result[match.groupValues[1]]!!.clear() }
 
         val statements = Regex("(?s)([^;]+);").findAll("$source;").map { it.groupValues[1].trim() }.toList()
         repeat(3) {
@@ -763,23 +776,35 @@ internal object TextageParser {
         val normalized = encoded.trim()
         if (normalized.isBlank()) return result
         if (!normalized.startsWith('#')) {
-            val start: Int
+            val cursorStart: Int
             val length: Int
             if (normalized.startsWith('x') && normalized.length >= 4) {
                 length = normalized.substring(1, 4).toIntOrNull(16) ?: return result
-                start = 4
+                cursorStart = 4
             } else {
                 length = normalized.length
-                start = 0
+                cursorStart = 0
             }
             if (length <= 0) return result
+            var cursor = cursorStart
             var offset = 0
-            var cursor = start
-            while (cursor + 1 < normalized.length && cursor < start + length) {
+            while (cursor + 1 < normalized.length) {
+                while (normalized.getOrNull(cursor) == '@') {
+                    val jump = normalized.substring(cursor + 1, (cursor + 3).coerceAtMost(normalized.length))
+                        .toIntOrNull(16) ?: 0
+                    offset += jump * 2
+                    cursor += 3
+                }
+                if (cursor + 1 >= normalized.length) break
                 val value = normalized.substring(cursor, cursor + 2).toIntOrNull(16) ?: 0
                 for (lane in 0..7) {
                     if ((value and (1 shl lane)) != 0) {
-                        result += chartNote(measureStartBeat, measureBeatLength, offset.toFloat() / length, laneOffset + lane)
+                        result += chartNote(
+                            measureStartBeat,
+                            measureBeatLength,
+                            offset.toFloat() / (length * 2f),
+                            laneOffset + lane,
+                        )
                     }
                 }
                 cursor += 2

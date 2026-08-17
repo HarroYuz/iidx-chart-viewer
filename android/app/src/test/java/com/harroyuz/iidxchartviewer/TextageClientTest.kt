@@ -67,6 +67,7 @@ class TextageClientTest {
     fun parsesTextageTempoChangesAndMeasureLengths() {
         val source = """
             genre="X"; title="X"; artist="Y"; bpm="40～165"; measure=5;
+            for(ii=2;ii<=2;ii++)ln[ii]=192;
             ln[3]=192;
             tc[1]=[" 900"];
             tc[2]=["1100"," 8064"," 7096"];
@@ -92,8 +93,43 @@ class TextageClientTest {
         assertEquals(90f, parsed.bpm, 0.001f)
         assertEquals(4, parsed.bpmChanges.size)
         assertEquals(4f, parsed.bpmChanges[1].beat, 0.001f)
+        assertEquals(6f, parsed.bpmChanges[2].beat, 0.001f)
+        assertEquals(2f, parsed.measureLengths[1], 0.001f)
         assertEquals(2f, parsed.measureLengths[2], 0.001f)
         assertTrue(parsed.secondsAtBeat(5f) > parsed.secondsAtBeat(4f))
         assertTrue(parsed.scrollBeatAt(5f) > parsed.scrollBeatAt(4f))
+    }
+
+    @Test
+    fun decodesTextageXCompressionAndClearsInheritedCharges() {
+        val source = """
+            measure=3;
+            if(k){
+                c1[2]=[[0,0,32,3]];
+                sp[2]="x07882@0404";
+                if(a){
+                    c1=[];
+                    sp[2]="x07882@0404";
+                }
+            }else{
+                sp[2]="";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "compression-test",
+            title = "compression-test",
+            mode = "SP",
+            difficulty = "A",
+            level = 1,
+            notes = 2,
+            version = "test",
+            bpm = "160",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertTrue(parsed.parsed)
+        assertTrue(parsed.notes.none { it.lane == 0 })
+        assertTrue(parsed.notes.any { it.beat == 4f && it.lane == 1 })
     }
 }

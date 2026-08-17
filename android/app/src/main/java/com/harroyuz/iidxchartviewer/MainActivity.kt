@@ -272,7 +272,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val cached = withContext(Dispatchers.IO) { store.loadChartData(chart) }
                 val usableCached = cached?.takeIf { cachedData ->
-                    chart.notes <= 0 || cachedData.notes.size == chart.notes
+                    cachedData.parsed && (chart.notes <= 0 || cachedData.chart.notes == chart.notes)
                 }
                 val data = usableCached ?: run {
                     if (chart.textageUrl == null) throw TextageException("该谱面没有可用的 Textage 链接")
@@ -956,7 +956,17 @@ private fun ChartPlayer(
     val duration = data.durationBeats.coerceAtLeast(4f)
     val totalMeasures = data.measureCount().coerceAtLeast(1)
     val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
-    val passedNotes = data.notes.count { it.beat <= currentBeat + 0.001f }
+    val passedNotes = data.notes.sumOf { note ->
+        if (note.holdBeats > 0f) {
+            (if (note.beat <= currentBeat + 0.001f) 1 else 0) +
+                (if (note.beat + note.holdBeats <= currentBeat + 0.001f) 1 else 0)
+        } else if (note.beat <= currentBeat + 0.001f) {
+            1
+        } else {
+            0
+        }
+    }
+    val totalNotes = data.chart.notes.takeIf { it > 0 } ?: passedNotes.coerceAtLeast(data.notes.size)
     val currentSeconds = data.secondsAtBeat(currentBeat)
     val totalSeconds = data.secondsAtBeat(duration).coerceAtLeast(0.001f)
     val progress = (currentSeconds / totalSeconds).coerceIn(0f, 1f)
@@ -985,7 +995,7 @@ private fun ChartPlayer(
                 Text(
                     buildAnnotatedString {
                         withStyle(SpanStyle(color = Muted)) { append("NOTES ") }
-                        withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/${data.notes.size}") }
+                        withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/$totalNotes") }
                         withStyle(SpanStyle(color = Muted)) { append(" · Measure ") }
                         withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/$totalMeasures") }
                     },
@@ -1193,10 +1203,13 @@ private fun ChartCanvas(
         drawLine(PlayerRed, Offset(0f, judgeY), Offset(size.width, judgeY), strokeWidth = 5f)
         val currentScrollBeat = data.scrollBeatAt(currentBeat)
         data.notes.forEach { note ->
-            if (note.beat < currentBeat - 0.001f) return@forEach
-            val noteScrollBeat = data.scrollBeatAt(note.beat)
-            val y = judgeY - (noteScrollBeat - currentScrollBeat) * pixelsPerBeat
-            if (y !in -70f..size.height + 70f) return@forEach
+            val noteEndBeat = note.beat + note.holdBeats
+            if (noteEndBeat < currentBeat - 0.001f) return@forEach
+            val visibleStartBeat = maxOf(note.beat, currentBeat)
+            val visibleStartScrollBeat = data.scrollBeatAt(visibleStartBeat)
+            val y = judgeY - (visibleStartScrollBeat - currentScrollBeat) * pixelsPerBeat
+            val endY = judgeY - (data.scrollBeatAt(noteEndBeat) - currentScrollBeat) * pixelsPerBeat
+            if (maxOf(y, endY) < -70f || minOf(y, endY) > size.height + 70f) return@forEach
             val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
             val logicalLane = if (isSp && mirror && rawLane > 0) 8 - rawLane else rawLane
             val displayLane = when {
@@ -1224,14 +1237,12 @@ private fun ChartCanvas(
                 else -> PlayerSkyBlue
             }
             if (note.holdBeats > 0f) {
-                val holdEndScrollBeat = data.scrollBeatAt(note.beat + note.holdBeats)
-                val holdHeight = (holdEndScrollBeat - noteScrollBeat) * pixelsPerBeat
+                val holdHeight = (y - endY).coerceAtLeast(8f)
                 val holdWidth = width * .88f
-                val endY = y - holdHeight.coerceAtLeast(8f)
                 drawRect(
                     color = noteColor.copy(alpha = .58f),
                     topLeft = Offset(left + (width - holdWidth) / 2f, endY),
-                    size = Size(holdWidth, holdHeight.coerceAtLeast(8f)),
+                    size = Size(holdWidth, holdHeight),
                 )
                 drawRoundRect(
                     color = noteColor,
@@ -1240,12 +1251,22 @@ private fun ChartCanvas(
                     cornerRadius = CornerRadius(5f),
                 )
             }
-            drawRoundRect(
-                color = noteColor,
-                topLeft = Offset(left, y - 6f),
-                size = Size(width, 12f),
-                cornerRadius = CornerRadius(5f),
-            )
+            if (note.beat >= currentBeat - 0.001f) {
+                drawRoundRect(
+                    color = noteColor,
+                    topLeft = Offset(left, y - 6f),
+                    size = Size(width, 12f),
+                    cornerRadius = CornerRadius(5f),
+                )
+            }
+            if (note.holdBeats > 0f) {
+                drawRoundRect(
+                    color = noteColor,
+                    topLeft = Offset(left, endY - 6f),
+                    size = Size(width, 12f),
+                    cornerRadius = CornerRadius(5f),
+                )
+            }
         }
     }
 }
