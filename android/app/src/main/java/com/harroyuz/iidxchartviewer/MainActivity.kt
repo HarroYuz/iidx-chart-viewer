@@ -380,8 +380,20 @@ private fun IidxApp(
                         onRetry = onRetryChart,
                         mode = browserMode,
                         onStyleToggle = {
-                            browserMode = if (browserMode == "SP") "DP" else "SP"
-                            onBack()
+                            val targetMode = if (browserMode == "SP") "DP" else "SP"
+                            val alternate = state.charts
+                                .filter {
+                                    it.mode == targetMode &&
+                                        it.title == selectedChart.title &&
+                                        it.subtitle == selectedChart.subtitle &&
+                                        it.composer == selectedChart.composer &&
+                                        it.textageUrl != null
+                                }
+                                .maxWithOrNull(
+                                    compareBy<IidxChart>({ difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
+                                )
+                            browserMode = targetMode
+                            if (alternate != null) onOpenChart(alternate) else onBack()
                         },
                         onOpenChart = onOpenChart,
                         onPlayerSettingsChange = onPlayerSettingsChange,
@@ -476,7 +488,7 @@ private fun ChartBrowserScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     modifier = Modifier.height(36.dp),
                 ) {
-                    Text("[$mode]", color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(mode, color = Purple, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -742,7 +754,7 @@ private fun ChartDetailScreen(
                 onClick = onStyleToggle,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 modifier = Modifier.height(34.dp),
-            ) { Text("[$mode]", color = Purple, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            ) { Text(mode, color = Purple, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -760,23 +772,20 @@ private fun ChartDetailScreen(
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(chart.version.ifBlank { "—" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "BPM ${chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }}",
-                        color = Muted,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        "NOTES ${(chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 } ?: "—"}",
-                        color = Muted,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    "BPM ${chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }}",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "NOTES ${(chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 } ?: "—"}",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
@@ -1137,9 +1146,11 @@ private fun ChartCanvas(
             if (y !in -70f..size.height + 70f) return@forEach
             val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
             val logicalLane = if (isSp && mirror && rawLane > 0) 8 - rawLane else rawLane
-            val displayLane = if (isSp && side == "2P") {
-                if (logicalLane == 0) 7 else logicalLane - 1
-            } else logicalLane
+            val displayLane = when {
+                isSp && side == "2P" -> if (logicalLane == 0) 7 else logicalLane - 1
+                !isSp && rawLane >= 8 -> 23 - rawLane
+                else -> logicalLane
+            }
             val laneIndex = displayLane.coerceIn(0, laneCount - 1)
             val laneWidth = laneWidths.getOrElse(laneIndex) { 1f } * unit
             val laneStart = if (isSp) {
@@ -1149,7 +1160,8 @@ private fun ChartCanvas(
             }
             val left = laneStart + laneWidth * .12f
             val width = laneWidth * .76f
-            val noteColor = if (!isSp) when (rawLane % 8) {
+            val sideLane = if (isSp) rawLane else if (rawLane >= 8) rawLane - 8 else rawLane
+            val noteColor = if (!isSp) when (sideLane) {
                 0 -> PlayerRed
                 1, 3, 5, 7 -> ComposeColor.White
                 else -> PlayerSkyBlue
