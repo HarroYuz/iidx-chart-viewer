@@ -8,7 +8,7 @@ import java.io.File
 
 class IidxLocalStore(context: Context) {
     private companion object {
-        const val CHART_CACHE_VERSION = 3
+        const val CHART_CACHE_VERSION = 4
         const val CATALOG_HEADER = "#iidx-catalog-v3"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 2
     }
@@ -132,12 +132,25 @@ class IidxLocalStore(context: Context) {
                 )
             }
         }
+        val bpmChanges = buildList {
+            val changes = json.optJSONArray("bpm_changes") ?: JSONArray()
+            for (index in 0 until changes.length()) {
+                val change = changes.optJSONObject(index) ?: continue
+                add(BpmChange(change.optDouble("beat").toFloat(), change.optDouble("bpm").toFloat()))
+            }
+        }
+        val measureLengths = buildList {
+            val lengths = json.optJSONArray("measure_lengths") ?: JSONArray()
+            for (index in 0 until lengths.length()) add(lengths.optDouble(index, 4.0).toFloat())
+        }
         TextageChartData(
             chart = chart.copy(notes = json.optInt("notes_count", chart.notes)),
             notes = notes,
             durationBeats = json.optDouble("duration_beats").toFloat(),
             parsed = json.optBoolean("parsed"),
             bpm = json.optDouble("bpm", 150.0).toFloat(),
+            bpmChanges = bpmChanges,
+            measureLengths = measureLengths,
             parserMessage = json.optString("parser_message").takeIf { it.isNotBlank() },
         )
     }.getOrNull()
@@ -162,6 +175,17 @@ class IidxLocalStore(context: Context) {
             put("duration_beats", data.durationBeats)
             put("parsed", data.parsed)
             put("bpm", data.bpm)
+            put("bpm_changes", JSONArray().apply {
+                data.bpmChanges.forEach { change ->
+                    put(JSONObject().apply {
+                        put("beat", change.beat)
+                        put("bpm", change.bpm)
+                    })
+                }
+            })
+            put("measure_lengths", JSONArray().apply {
+                data.measureLengths.forEach { put(it) }
+            })
             put("parser_message", data.parserMessage ?: JSONObject.NULL)
         }
         chartCacheFile(data.chart.id).writeText(json.toString())

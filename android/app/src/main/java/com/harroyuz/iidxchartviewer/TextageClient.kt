@@ -94,6 +94,7 @@ class TextageException(message: String) : Exception(message)
 
 internal object TextageParser {
     private const val TEXTAGE_BAR_TICKS = 384
+    private const val TEXTAGE_QUARTER_TICKS = 96f
     private val tagPattern = Regex("(?is)<[^>]+>")
     private val scriptPattern = Regex("(?is)<script\\b[^>]*>")
     private val chartSlots = listOf(
@@ -399,11 +400,16 @@ internal object TextageParser {
         .toList()
 
     fun parseChart(chart: IidxChart, source: String): TextageChartData {
-        val notes = decodeTextageChart(chart, source)
+        val measureTicks = parseMeasureTicks(source)
+        val notes = decodeTextageChart(chart, source, measureTicks)
+        val measureLengths = parseMeasureLengths(source, measureTicks, notes)
+        val bpmChanges = parseBpmChanges(source, measureTicks)
         val lastBeat = notes.maxOfOrNull { it.beat + it.holdBeats }
-        val duration = lastBeat?.let { (kotlin.math.floor(it / 4f).toInt() + 1) * 4f } ?: 0f
-        val bpm = Regex("[0-9]+(?:\\.[0-9]+)?")
+        val duration = lastBeat?.let { measureEndAtBeat(it, measureLengths) } ?: 0f
+        val fallbackBpm = Regex("[0-9]+(?:\\.[0-9]+)?")
             .find(chart.bpm)?.value?.toFloatOrNull()?.takeIf { it in 20f..400f } ?: 150f
+        val initialBpm = bpmChanges.firstOrNull()?.bpm ?: fallbackBpm
+        val effectiveBpmChanges = if (bpmChanges.isEmpty()) listOf(BpmChange(0f, initialBpm)) else bpmChanges
         // The catalog's note count includes Textage's special-note accounting.
         // Keep it as the source of truth; the renderer deliberately stores one
         // head note for a long note and does not add a second note for release.
@@ -413,7 +419,9 @@ internal object TextageParser {
             notes = notes,
             durationBeats = duration,
             parsed = notes.isNotEmpty(),
-            bpm = bpm,
+            bpm = initialBpm,
+            bpmChanges = effectiveBpmChanges,
+            measureLengths = measureLengths,
             parserMessage = if (notes.isEmpty()) {
                 "已获取 Textage 谱面数据，但没有识别到可绘制的时序数据。"
             } else null,
@@ -425,7 +433,7 @@ internal object TextageParser {
      * entries are not HTML notes: they are compact strings consumed by
      * bms2jsh.js. This is the small, deterministic decoder for that format.
      */
-    private fun decodeTextageChart(chart: IidxChart, source: String): List<ChartNote> {
+    private fun decodeTextageChart(chart: IidxChart, source: String, measureTicks: Map<Int, Int>): List<ChartNote> {
         val modeBody = textageModeBody(source, chart.mode) ?: return emptyList()
         val variable = if (chart.mode == "DP") "dp" else "sp"
         val branchNames = listOf("a", "l", "g", "kuro")
@@ -457,14 +465,84 @@ internal object TextageParser {
             } ?: chargeBase
             for ((measureIndex, encoded) in sideMeasures.withIndex()) {
                 if (measureIndex <= 0 || encoded.isNullOrBlank()) continue
-                notes += decodeTextageMeasure(encoded, measureIndex, laneOffset)
+                val ticks = measureTicks[measureIndex] ?: TEXTAGE_BAR_TICKS
+                notes += decodeTextageMeasure(
+                    encoded = encoded,
+                    measureStartBeat = measureStartBeat(measureIndex, measureTicks),
+                    measureBeatLength = ticks / TEXTAGE_QUARTER_TICKS,
+                    measureTicks = ticks,
+                    laneOffset = laneOffset,
+                )
             }
-            notes += decodeChargeNotes(chargeMeasures[chargeArray].orEmpty(), laneOffset)
+            notes += decodeChargeNotes(chargeMeasures[chargeArray].orEmpty(), laneOffset, measureTicks)
         }
         if (notes.isEmpty()) return emptyList()
         return notes
             .distinctBy { Triple(it.beat, it.lane, it.holdBeats) }
             .sortedWith(compareBy<ChartNote> { it.beat }.thenBy { it.lane })
+    }
+
+    private fun parseMeasureTicks(source: String): Map<Int, Int> = buildMap {
+        Regex("ln\\s*\\[\\s*(\\d+)\\s*]\\s*=\\s*(\\d+)")
+            .findAll(source)
+            .forEach { match ->
+                val measure = match.groupValues[1].toIntOrNull() ?: return@forEach
+                val ticks = match.groupValues[2].toIntOrNull()?.takeIf { it > 0 } ?: return@forEach
+                put(measure, ticks)
+            }
+    }
+
+    private fun parseMeasureLengths(
+        source: String,
+        measureTicks: Map<Int, Int>,
+        notes: List<ChartNote>,
+    ): List<Float> {
+        val declared = Regex("measure\\s*=\\s*(\\d+)")
+            .find(source)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val lastNoteMeasure = notes.maxOfOrNull { kotlin.math.floor(it.beat / 4f).toInt() + 1 } ?: 0
+        val count = maxOf(declared, measureTicks.keys.maxOrNull() ?: 0, lastNoteMeasure)
+        if (count <= 0) return emptyList()
+        return (1..count).map { (measureTicks[it] ?: TEXTAGE_BAR_TICKS) / TEXTAGE_QUARTER_TICKS }
+    }
+
+    private fun parseBpmChanges(source: String, measureTicks: Map<Int, Int>): List<BpmChange> {
+        val changes = ArrayList<BpmChange>()
+        val entryPattern = Regex("tc\\s*\\[\\s*(\\d+)\\s*]\\s*=\\s*\\[([^]]*)]")
+        val valuePattern = Regex("[\\\"']([^\\\"']*)[\\\"']")
+        entryPattern.findAll(source).forEach { entry ->
+            val measure = entry.groupValues[1].toIntOrNull() ?: return@forEach
+            val startBeat = measureStartBeat(measure, measureTicks)
+            valuePattern.findAll(entry.groupValues[2]).forEach { valueMatch ->
+                val encoded = valueMatch.groupValues[1]
+                if (encoded.length < 3) return@forEach
+                val bpm = encoded.take(3).trim().toFloatOrNull()?.takeIf { it in 1f..1000f } ?: return@forEach
+                val position = encoded.drop(3).trim().toIntOrNull() ?: 0
+                val beat = startBeat + position / TEXTAGE_QUARTER_TICKS
+                changes += BpmChange(beat, bpm)
+            }
+        }
+        return changes
+            .sortedBy { it.beat }
+            .distinctBy { it.beat }
+    }
+
+    private fun measureStartBeat(measureIndex: Int, measureTicks: Map<Int, Int>): Float {
+        if (measureIndex <= 1) return 0f
+        var beat = 0f
+        for (index in 1 until measureIndex) {
+            beat += (measureTicks[index] ?: TEXTAGE_BAR_TICKS) / TEXTAGE_QUARTER_TICKS
+        }
+        return beat
+    }
+
+    private fun measureEndAtBeat(beat: Float, measureLengths: List<Float>): Float {
+        if (measureLengths.isEmpty()) return (kotlin.math.floor(beat / 4f).toInt() + 1) * 4f
+        var start = 0f
+        measureLengths.forEach { length ->
+            if (beat < start + length) return start + length
+            start += length
+        }
+        return start
     }
 
     private fun textageModeBody(source: String, mode: String): String? {
@@ -600,6 +678,7 @@ internal object TextageParser {
     private fun decodeChargeNotes(
         measures: Map<Int, List<ChargeEntry>>,
         laneOffset: Int,
+        measureTicks: Map<Int, Int>,
     ): List<ChartNote> {
         if (measures.isEmpty()) return emptyList()
         val result = ArrayList<ChartNote>()
@@ -607,8 +686,8 @@ internal object TextageParser {
         measures.toSortedMap().forEach { (measureIndex, entries) ->
             entries.forEach { entry ->
                 val lane = entry.lane
-                val startBeat = chargeBeat(measureIndex, entry.position)
-                val endBeat = chargeBeat(measureIndex, entry.position + entry.length)
+                val startBeat = chargeBeat(measureIndex, entry.position, measureTicks)
+                val endBeat = chargeBeat(measureIndex, entry.position + entry.length, measureTicks)
                 val begins = entry.type and 1 != 0
                 val ends = entry.type and 2 != 0
                 val current = open[lane]
@@ -644,8 +723,8 @@ internal object TextageParser {
         return result
     }
 
-    private fun chargeBeat(measureIndex: Int, position: Int): Float =
-        (measureIndex - 1) * 4f + position / 32f
+    private fun chargeBeat(measureIndex: Int, position: Int, measureTicks: Map<Int, Int>): Float =
+        measureStartBeat(measureIndex, measureTicks) + position / 32f
 
     private fun chartNoteAtBeat(beat: Float, lane: Int, holdBeats: Float): ChartNote = ChartNote(
         beat = beat,
@@ -673,7 +752,13 @@ internal object TextageParser {
         return result
     }
 
-    private fun decodeTextageMeasure(encoded: String, measureIndex: Int, laneOffset: Int): List<ChartNote> {
+    private fun decodeTextageMeasure(
+        encoded: String,
+        measureStartBeat: Float,
+        measureBeatLength: Float,
+        measureTicks: Int,
+        laneOffset: Int,
+    ): List<ChartNote> {
         val result = ArrayList<ChartNote>()
         val normalized = encoded.trim()
         if (normalized.isBlank()) return result
@@ -693,7 +778,9 @@ internal object TextageParser {
             while (cursor + 1 < normalized.length && cursor < start + length) {
                 val value = normalized.substring(cursor, cursor + 2).toIntOrNull(16) ?: 0
                 for (lane in 0..7) {
-                    if ((value and (1 shl lane)) != 0) result += chartNote(measureIndex, offset.toFloat() / length, laneOffset + lane)
+                    if ((value and (1 shl lane)) != 0) {
+                        result += chartNote(measureStartBeat, measureBeatLength, offset.toFloat() / length, laneOffset + lane)
+                    }
                 }
                 cursor += 2
                 offset += 2
@@ -735,7 +822,7 @@ internal object TextageParser {
                     startOffset = definition.first
                     step = definition.second
                     type = 1
-                    val measureValue = if (compression == 0) 192 else 64
+                    val measureValue = if (compression == 0) measureTicks / 2 else measureTicks / 6
                     val count = kotlin.math.ceil(measureValue.toDouble() / step).toInt() + 1
                     val end = (cursor + count).coerceAtMost(normalized.length)
                     encodedValue = normalized.substring((cursor + 1).coerceAtMost(end), end)
@@ -779,9 +866,9 @@ internal object TextageParser {
 
             if (type == 0) {
                 val repeated = if (compression == 0) encodedValue else "1"
-                for (position in startOffset until TEXTAGE_BAR_TICKS step step) {
+                for (position in startOffset until measureTicks step step) {
                     val lane = repeated.firstOrNull()?.digitToIntOrNull() ?: 0
-                    if (lane != 0) result += chartNote(measureIndex, position.toFloat() / TEXTAGE_BAR_TICKS, laneOffset + lane)
+                    if (lane != 0) result += chartNote(measureStartBeat, measureBeatLength, position.toFloat() / measureTicks, laneOffset + lane)
                 }
             } else if (type == 1) {
                 val decoded = StringBuilder()
@@ -798,9 +885,9 @@ internal object TextageParser {
                     }
                 }
                 var valueIndex = 0
-                for (position in startOffset until TEXTAGE_BAR_TICKS step step) {
+                for (position in startOffset until measureTicks step step) {
                     val lane = decoded.getOrNull(valueIndex)?.digitToIntOrNull() ?: 0
-                    if (lane != 0) result += chartNote(measureIndex, position.toFloat() / TEXTAGE_BAR_TICKS, laneOffset + lane)
+                    if (lane != 0) result += chartNote(measureStartBeat, measureBeatLength, position.toFloat() / measureTicks, laneOffset + lane)
                     valueIndex++
                 }
             } else {
@@ -809,7 +896,14 @@ internal object TextageParser {
                     val lane = if (compression == 0) encodedValue[valueIndex++].digitToIntOrNull() ?: 0 else 0
                     val first = base64.indexOf(encodedValue.getOrNull(valueIndex++) ?: 'A')
                     val second = base64.indexOf(encodedValue.getOrNull(valueIndex++) ?: 'A')
-                    if (first >= 0 && second >= 0) result += chartNote(measureIndex, (first * 64 + second).toFloat() / TEXTAGE_BAR_TICKS, laneOffset + lane)
+                    if (first >= 0 && second >= 0) {
+                        result += chartNote(
+                            measureStartBeat,
+                            measureBeatLength,
+                            (first * 64 + second).toFloat() / measureTicks,
+                            laneOffset + lane,
+                        )
+                    }
                 }
             }
             if (compression == 2) break
@@ -817,8 +911,8 @@ internal object TextageParser {
         return result
     }
 
-    private fun chartNote(measureIndex: Int, fraction: Float, lane: Int): ChartNote = ChartNote(
-        beat = (measureIndex - 1) * 4f + fraction.coerceIn(0f, 1f) * 4f,
+    private fun chartNote(measureStartBeat: Float, measureBeatLength: Float, fraction: Float, lane: Int): ChartNote = ChartNote(
+        beat = measureStartBeat + fraction.coerceIn(0f, 1f) * measureBeatLength,
         lane = lane,
     )
 

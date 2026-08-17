@@ -73,6 +73,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 private val Ink = ComposeColor(0xFF171722)
 private val Muted = ComposeColor(0xFF6E6C7A)
@@ -932,6 +933,15 @@ private fun formatPlayerTime(seconds: Float): String {
     return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
 }
 
+private fun formatPlayerBpm(bpm: Float): String {
+    val rounded = bpm.toInt()
+    return if (kotlin.math.abs(bpm - rounded) < 0.01f) {
+        rounded.toString()
+    } else {
+        String.format(Locale.US, "%.1f", bpm)
+    }
+}
+
 @Composable
 private fun ChartPlayer(
     data: TextageChartData,
@@ -944,11 +954,13 @@ private fun ChartPlayer(
     var configExpanded by remember(data.chart.id) { mutableStateOf(false) }
     val safeSpeed = settings.safeSpeed
     val duration = data.durationBeats.coerceAtLeast(4f)
-    val currentMeasure = (kotlin.math.floor(currentBeat / 4f).toInt() + 1).coerceIn(1, kotlin.math.ceil(duration / 4f).toInt())
+    val totalMeasures = data.measureCount().coerceAtLeast(1)
+    val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
     val passedNotes = data.notes.count { it.beat <= currentBeat + 0.001f }
-    val progress = (currentBeat / duration).coerceIn(0f, 1f)
-    val currentSeconds = currentBeat * 60f / data.bpm.coerceAtLeast(1f)
-    val totalSeconds = duration * 60f / data.bpm.coerceAtLeast(1f)
+    val currentSeconds = data.secondsAtBeat(currentBeat)
+    val totalSeconds = data.secondsAtBeat(duration).coerceAtLeast(0.001f)
+    val progress = (currentSeconds / totalSeconds).coerceIn(0f, 1f)
+    val currentBpm = data.bpmAt(currentBeat)
 
     LaunchedEffect(data.chart.id, playing) {
         if (!playing) return@LaunchedEffect
@@ -958,7 +970,7 @@ private fun ChartPlayer(
             val now = System.nanoTime()
             val seconds = (now - last) / 1_000_000_000f
             last = now
-            currentBeat += seconds * data.bpm / 60f
+            currentBeat = data.beatAtSeconds(data.secondsAtBeat(currentBeat) + seconds)
             if (currentBeat >= duration) {
                 currentBeat = duration
                 playing = false
@@ -974,10 +986,8 @@ private fun ChartPlayer(
                     buildAnnotatedString {
                         withStyle(SpanStyle(color = Muted)) { append("NOTES ") }
                         withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/${data.notes.size}") }
-                        withStyle(SpanStyle(color = Muted)) { append(" · BPM ") }
-                        withStyle(SpanStyle(color = NormalBlue)) { append(data.bpm.toInt().toString()) }
                         withStyle(SpanStyle(color = Muted)) { append(" · Measure ") }
-                        withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/${kotlin.math.ceil(duration / 4f).toInt()}") }
+                        withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/$totalMeasures") }
                     },
                     fontSize = 10.sp,
                 )
@@ -985,7 +995,13 @@ private fun ChartPlayer(
             TextButton(
                 onClick = {
                     playing = false
-                    currentBeat = (kotlin.math.floor(currentBeat / 4f).toInt() - 1).coerceAtLeast(0) * 4f
+                    val measureStart = data.measureStart(currentMeasure)
+                    val targetMeasure = if (currentBeat <= measureStart + 0.001f) {
+                        currentMeasure - 1
+                    } else {
+                        currentMeasure
+                    }
+                    currentBeat = data.measureStart(targetMeasure.coerceAtLeast(1))
                 },
                 modifier = Modifier.size(34.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
@@ -1001,21 +1017,42 @@ private fun ChartPlayer(
             TextButton(
                 onClick = {
                     playing = false
-                    currentBeat = ((kotlin.math.floor(currentBeat / 4f).toInt() + 1) * 4f).coerceAtMost(duration)
+                    currentBeat = if (currentMeasure >= totalMeasures) {
+                        duration
+                    } else {
+                        data.measureStart(currentMeasure + 1).coerceAtMost(duration)
+                    }
                 },
                 modifier = Modifier.size(34.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
             ) { Text("›|", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatPlayerTime(currentSeconds), color = Muted, fontSize = 10.sp)
-            Text(formatPlayerTime(totalSeconds), color = Muted, fontSize = 10.sp)
+        Box(Modifier.fillMaxWidth().height(18.dp)) {
+            Text(
+                formatPlayerTime(currentSeconds),
+                color = Muted,
+                fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+            Text(
+                "BPM ${formatPlayerBpm(currentBpm)}",
+                color = NormalBlue,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center),
+            )
+            Text(
+                formatPlayerTime(totalSeconds),
+                color = Muted,
+                fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
         }
         Slider(
             value = progress,
             onValueChange = {
                 playing = false
-                currentBeat = it * duration
+                currentBeat = data.beatAtSeconds(it * totalSeconds).coerceIn(0f, duration)
             },
             modifier = Modifier.fillMaxWidth().height(24.dp),
         )
@@ -1068,14 +1105,22 @@ private fun ChartCanvas(
     modifier: Modifier,
 ) {
     val laneCount = if (data.chart.mode == "DP") 16 else 8
-    // IIDX's scroll velocity is proportional to BPM x Hi-Speed. Playback
-    // already advances beats using BPM, so the lane distance only needs to
-    // scale linearly with the user's Hi-Speed value.
+    // The chart's scroll coordinate includes BPM changes. This makes the
+    // distance between notes and the visible scroll speed change at the same
+    // places as the source chart.
     val pixelsPerBeat = 16f * speed
+    val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
+    val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
+    val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
     Canvas(
-        modifier.pointerInput(data.chart.id, playing, speed) {
+        modifier.pointerInput(data.chart.id, speed) {
             detectVerticalDragGestures { _, dragAmount ->
-                if (!playing) onCurrentBeatChange(currentBeat - dragAmount / pixelsPerBeat)
+                if (!latestPlaying) {
+                    val currentScrollBeat = data.scrollBeatAt(latestCurrentBeat)
+                    latestOnCurrentBeatChange(
+                        data.beatAtScrollBeat(currentScrollBeat - dragAmount / pixelsPerBeat),
+                    )
+                }
             }
         },
     ) {
@@ -1125,19 +1170,32 @@ private fun ChartCanvas(
             )
         }
         if (showBarLines) {
-            val firstBar = kotlin.math.floor((currentBeat - size.height / pixelsPerBeat) / 4f).toInt().coerceAtLeast(0)
-            val lastBar = kotlin.math.ceil((currentBeat + size.height / pixelsPerBeat) / 4f).toInt()
-            for (bar in firstBar..lastBar) {
-                val y = judgeY - (bar * 4f - currentBeat) * pixelsPerBeat
+            val currentScrollBeat = data.scrollBeatAt(currentBeat)
+            val firstMeasure = (
+                data.measureAt(data.beatAtScrollBeat(currentScrollBeat - size.height / pixelsPerBeat)) - 2
+            ).coerceAtLeast(1)
+            val lastMeasure = (
+                data.measureAt(data.beatAtScrollBeat(currentScrollBeat + size.height / pixelsPerBeat)) + 2
+            ).coerceAtMost(data.measureCount())
+            for (measure in firstMeasure..lastMeasure) {
+                val measureBeat = data.measureStart(measure)
+                val y = judgeY - (data.scrollBeatAt(measureBeat) - currentScrollBeat) * pixelsPerBeat
                 if (y in -2f..size.height + 2f) {
-                    drawLine(ComposeColor(0xFF444756), Offset(0f, y), Offset(size.width, y), strokeWidth = if (bar % 4 == 0) 2f else 1f)
+                    drawLine(
+                        ComposeColor(0xFF444756),
+                        Offset(0f, y),
+                        Offset(size.width, y),
+                        strokeWidth = if (measure % 4 == 1) 2f else 1f,
+                    )
                 }
             }
         }
         drawLine(PlayerRed, Offset(0f, judgeY), Offset(size.width, judgeY), strokeWidth = 5f)
+        val currentScrollBeat = data.scrollBeatAt(currentBeat)
         data.notes.forEach { note ->
             if (note.beat < currentBeat - 0.001f) return@forEach
-            val y = judgeY - (note.beat - currentBeat) * pixelsPerBeat
+            val noteScrollBeat = data.scrollBeatAt(note.beat)
+            val y = judgeY - (noteScrollBeat - currentScrollBeat) * pixelsPerBeat
             if (y !in -70f..size.height + 70f) return@forEach
             val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
             val logicalLane = if (isSp && mirror && rawLane > 0) 8 - rawLane else rawLane
@@ -1166,7 +1224,8 @@ private fun ChartCanvas(
                 else -> PlayerSkyBlue
             }
             if (note.holdBeats > 0f) {
-                val holdHeight = note.holdBeats * pixelsPerBeat
+                val holdEndScrollBeat = data.scrollBeatAt(note.beat + note.holdBeats)
+                val holdHeight = (holdEndScrollBeat - noteScrollBeat) * pixelsPerBeat
                 val holdWidth = width * .88f
                 val endY = y - holdHeight.coerceAtLeast(8f)
                 drawRect(
