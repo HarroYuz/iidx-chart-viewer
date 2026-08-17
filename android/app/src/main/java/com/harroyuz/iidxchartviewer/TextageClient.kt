@@ -473,7 +473,7 @@ internal object TextageParser {
         val ifClose = balancedEnd(source, ifOpen, '{', '}')
         if (ifOpen < 0 || ifClose <= ifOpen) return null
         if (mode != "DP") return source.substring(ifOpen + 1, ifClose)
-        val elseMatch = Regex("}\\s*else\\s*\\{").find(source, ifClose + 1) ?: return null
+        val elseMatch = Regex("\\}\\s*else\\s*\\{").find(source, ifClose) ?: return null
         val elseOpen = source.indexOf('{', elseMatch.range.first)
         val elseClose = balancedEnd(source, elseOpen, '{', '}')
         if (elseOpen < 0 || elseClose <= elseOpen) return null

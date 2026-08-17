@@ -35,4 +35,31 @@ class TextageClientTest {
         assertEquals(0f, hold?.beat ?: -1f, 0.001f)
         assertEquals(4.9375f, hold?.holdBeats ?: -1f, 0.001f)
     }
+
+    @Test
+    fun selectsDpElseBranchWithoutRegexError() {
+        val source = """
+            if(k){
+                sp[1]="01";
+            }else{
+                sp[1]="01";
+                dp[1]="01";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "test-dp",
+            title = "test",
+            mode = "DP",
+            difficulty = "H",
+            level = 1,
+            notes = 1,
+            version = "test",
+            bpm = "160",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertTrue(parsed.parsed)
+        assertTrue(parsed.notes.any { it.lane == 8 })
+    }
 }

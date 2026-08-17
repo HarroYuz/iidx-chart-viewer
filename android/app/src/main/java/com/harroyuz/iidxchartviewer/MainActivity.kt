@@ -60,8 +60,11 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
@@ -392,6 +395,7 @@ private fun ChartBrowserScreen(
                 subtitle = group.first().subtitle,
                 genre = group.first().genre,
                 composer = group.first().composer,
+                version = group.first().version,
                 charts = group.groupBy { it.difficulty }.values.map { sameDifficulty ->
                     sameDifficulty.maxWithOrNull(
                         compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
@@ -438,22 +442,24 @@ private fun ChartBrowserScreen(
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
+                Text("Style：", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(5.dp))
                 OutlinedButton(
                     onClick = { mode = if (mode == "SP") "DP" else "SP" },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     modifier = Modifier.height(36.dp),
                 ) {
-                    Text("Style [$mode]", color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("[$mode]", color = Purple, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
+            Spacer(Modifier.width(12.dp))
             val avatarText = state.bjmUser
                 ?.let { (it.name.ifBlank { it.id }).firstOrNull()?.toString()?.uppercase() }
                 ?: "○"
             Box(
-                Modifier.size(42.dp)
-                    .clip(RoundedCornerShape(21.dp))
+                Modifier.size(36.dp)
+                    .clip(RoundedCornerShape(18.dp))
                     .background(if (state.bjmUser == null) Panel else Purple.copy(alpha = .18f))
-                    .border(1.dp, if (state.bjmUser == null) Muted else Purple, RoundedCornerShape(21.dp))
                     .clickable { if (state.bjmUser == null) onLogin() else onOpenBjmProfile() },
                 contentAlignment = Alignment.Center,
             ) {
@@ -498,6 +504,7 @@ private data class SongGroup(
     val subtitle: String,
     val genre: String,
     val composer: String,
+    val version: String,
     val charts: List<IidxChart>,
 )
 
@@ -597,23 +604,34 @@ private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modi
             .border(1.dp, ComposeColor(0xFF292B42), RoundedCornerShape(12.dp))
             .padding(horizontal = 12.dp, vertical = 9.dp),
     ) {
-        Text(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(4.dp))
-        Text(song.title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (song.subtitle.isNotBlank()) {
-            Text(song.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                Text(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(4.dp))
+                Text(song.title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (song.subtitle.isNotBlank()) {
+                    Text(song.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    song.composer.ifBlank { "未知曲师" },
+                    color = Muted,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(song.version.ifBlank { "—" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "BPM ${song.charts.firstOrNull()?.bpm?.ifBlank { "—" } ?: "—"}",
+                    color = Muted,
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            listOfNotNull(
-                song.composer.takeIf { it.isNotBlank() },
-                song.charts.firstOrNull()?.bpm?.takeIf { it.isNotBlank() }?.let { "BPM $it" },
-            ).joinToString(" · ").ifBlank { "未知曲师" },
-            color = Muted,
-            fontSize = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
         Spacer(Modifier.height(7.dp))
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -700,7 +718,12 @@ private fun ChartDetailScreen(
                 DetailValue("NOTES", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—")
             }
             Spacer(Modifier.height(5.dp))
-            Text("${chart.mode} ${difficultyName(chart.difficulty)} · LEVEL ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}", color = Cyan, fontSize = 10.sp, letterSpacing = .8.sp)
+            Text(
+                "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
+                color = difficultyColor(chart.difficulty),
+                fontSize = 10.sp,
+                letterSpacing = .8.sp,
+            )
         }
         Spacer(Modifier.height(16.dp))
 
@@ -776,7 +799,7 @@ private fun PlayerConfigBox(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(if (expanded) "播放器配置" else summary, color = if (expanded) Ink else Muted, fontSize = 11.sp)
-            Text(if (expanded) "▲" else "▼", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(if (expanded) "▼" else "▲", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         if (expanded) {
             Row(
@@ -871,7 +894,17 @@ private fun ChartPlayer(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text("${passedNotes}/${data.notes.size} NOTES · BPM ${data.bpm.toInt()} · Measure $currentMeasure/${kotlin.math.ceil(duration / 4f).toInt()}", color = Muted, fontSize = 10.sp)
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = Muted)) { append("NOTES ") }
+                        withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/${data.notes.size}") }
+                        withStyle(SpanStyle(color = Muted)) { append(" · BPM ") }
+                        withStyle(SpanStyle(color = NormalBlue)) { append(data.bpm.toInt().toString()) }
+                        withStyle(SpanStyle(color = Muted)) { append(" · Measure ") }
+                        withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/${kotlin.math.ceil(duration / 4f).toInt()}") }
+                    },
+                    fontSize = 10.sp,
+                )
             }
             TextButton(
                 onClick = {
@@ -960,7 +993,9 @@ private fun ChartCanvas(
     ) {
         val isSp = data.chart.mode != "DP"
         val unit = if (isSp) size.width / 8.5f else size.width / laneCount
-        val laneWidths = if (isSp) listOf(1.5f) + List(7) { 1f } else List(laneCount) { 1f }
+        val laneWidths = if (isSp) {
+            if (side == "2P") List(7) { 1f } + listOf(1.5f) else listOf(1.5f) + List(7) { 1f }
+        } else List(laneCount) { 1f }
         val laneLefts = laneWidths.runningFold(0f) { sum, width -> sum + width * unit }.dropLast(1)
         val judgeY = size.height * .84f
 
@@ -1006,11 +1041,18 @@ private fun ChartCanvas(
             }
             if (note.holdBeats > 0f) {
                 val holdHeight = note.holdBeats * pixelsPerBeat
+                val holdWidth = width * .88f
+                val endY = y - holdHeight.coerceAtLeast(8f)
+                drawRect(
+                    color = noteColor.copy(alpha = .58f),
+                    topLeft = Offset(left + (width - holdWidth) / 2f, endY),
+                    size = Size(holdWidth, holdHeight.coerceAtLeast(8f)),
+                )
                 drawRoundRect(
-                    color = noteColor.copy(alpha = .42f),
-                    topLeft = Offset(left + width * .27f, y),
-                    size = Size(width * .46f, holdHeight.coerceAtLeast(8f)),
-                    cornerRadius = CornerRadius(width * .18f),
+                    color = noteColor,
+                    topLeft = Offset(left, endY - 6f),
+                    size = Size(width, 12f),
+                    cornerRadius = CornerRadius(5f),
                 )
             }
             drawRoundRect(
