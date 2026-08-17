@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -184,7 +185,9 @@ class MainActivity : ComponentActivity() {
                     message = message,
                     localCatalogPresent = localCatalogPresent,
                     onDismissMessage = { message = null },
-                    onLogin = { message = "BJM接入能力开发中" },
+                    onLogin = {
+                        Toast.makeText(this@MainActivity, "BJM接入能力开发中", Toast.LENGTH_SHORT).show()
+                    },
                     onOpenBjmProfile = {},
                     onSyncBjm = ::syncBjm,
                     onRefreshTextage = ::refreshTextage,
