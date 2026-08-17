@@ -67,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -89,6 +90,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.lifecycleScope
@@ -1117,7 +1119,7 @@ private fun PlayerConfigBox(
             if (settings.safePlayOption == "RANDOM") {
                 if (isSp) {
                     RandomMappingRow(
-                        label = "RANDOM 轨道配置",
+                        label = "RANDOM",
                         mapping = if (settings.side == "1P") settings.safeRandomMapping1P else settings.safeRandomMapping2P,
                         onMappingChange = { mapping ->
                             onSettingsChange(
@@ -1213,9 +1215,9 @@ private fun RandomMappingRow(
     val dragThreshold = with(LocalDensity.current) { 30.dp.toPx() }
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(if (label == "RANDOM 轨道配置") 70.dp else 32.dp)) {
-                Text(label, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("拖动按键以配置", color = Muted, fontSize = 7.sp, maxLines = 1)
+            Column(Modifier.width(if (label == "RANDOM") 46.dp else 32.dp)) {
+                Text(label, color = Muted, fontSize = 10.sp, lineHeight = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("拖动配置", color = Muted, fontSize = 7.sp, lineHeight = 8.sp, maxLines = 1)
             }
             mapping.forEachIndexed { index, value ->
                 RandomLaneButton(
@@ -1254,12 +1256,13 @@ private fun RandomLaneButton(
 ) {
     var dragDistance by remember { mutableStateOf(0f) }
     val buttonShape = RoundedCornerShape(5.dp)
+    val labelTextSize = with(LocalDensity.current) { if (value == null) 9.sp.toPx() else 13.sp.toPx() }
     Box(
         modifier
             .size(if (value == null) 36.dp else 28.dp)
             .clip(buttonShape)
             .background(if (value == null) Panel else if (value % 2 == 1) ComposeColor.White else ComposeColor(0xFF252535))
-            .border(1.dp, ComposeColor(0xFFE33D4F), buttonShape)
+            .border(1.dp, ComposeColor(0xFF11131A), buttonShape)
             .then(
                 if (value == null) Modifier.clickable(onClick = onRandomize)
                 else Modifier.pointerInput(value, dragThreshold) {
@@ -1277,15 +1280,35 @@ private fun RandomLaneButton(
                         },
                     )
                 },
-            ),
-        contentAlignment = Alignment.Center,
+            )
+            .graphicsLayer {
+                if (value != null) {
+                    translationX = dragDistance
+                    alpha = if (dragDistance == 0f) 1f else .5f
+                }
+            }
+            .zIndex(if (value != null && dragDistance != 0f) 1f else 0f),
     ) {
-        Text(
-            value?.toString() ?: "随机",
-            color = if (value == null) Purple else ComposeColor(0xFFFFD23F),
-            fontSize = if (value == null) 9.sp else 13.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        Canvas(Modifier.fillMaxSize()) {
+            drawIntoCanvas { canvas ->
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    textSize = labelTextSize
+                    textAlign = Paint.Align.CENTER
+                    typeface = Typeface.DEFAULT_BOLD
+                    color = if (value == null) Purple.toArgb() else ComposeColor(0xFFE33D4F).toArgb()
+                    style = if (value == null) Paint.Style.FILL else Paint.Style.STROKE
+                    strokeWidth = if (value == null) 0f else 2.2f
+                }
+                val baseline = (size.height - (paint.ascent() + paint.descent())) / 2f
+                val text = value?.toString() ?: "随机"
+                canvas.nativeCanvas.drawText(text, size.width / 2f, baseline, paint)
+                if (value != null) {
+                    paint.style = Paint.Style.FILL
+                    paint.color = ComposeColor(0xFFFFD23F).toArgb()
+                    canvas.nativeCanvas.drawText(text, size.width / 2f, baseline, paint)
+                }
+            }
+        }
     }
 }
 

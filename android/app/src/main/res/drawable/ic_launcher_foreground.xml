@@ -7,19 +7,19 @@
     <!-- Enlarged turntable. -->
     <path
         android:fillColor="#E33D4F"
-        android:pathData="M32,34C20.954,34 12,42.954 12,54s8.954,20 20,20 20,-8.954 20,-20 -8.954,-20 -20,-20z" />
+        android:pathData="M27,35C16.507,35 8,43.507 8,54s8.507,19 19,19 19,-8.507 19,-19 -8.507,-19 -19,-19z" />
     <path
         android:fillColor="#202331"
-        android:pathData="M32,37C22.611,37 15,44.611 15,54s7.611,17 17,17 17,-7.611 17,-17 -7.611,-17 -17,-17z" />
+        android:pathData="M27,38C18.163,38 11,45.163 11,54s7.163,16 16,16 16,-7.163 16,-16 -7.163,-16 -16,-16z" />
     <path
         android:fillColor="#778096"
-        android:pathData="M32,42C25.373,42 20,47.373 20,54s5.373,12 12,12 12,-5.373 12,-12 -5.373,-12 -12,-12z" />
+        android:pathData="M27,43C21.477,43 17,47.477 17,54s4.477,11 10,11 10,-4.477 10,-11 -4.477,-11 -10,-11z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M32,49C29.239,49 27,51.239 27,54s2.239,5 5,5 5,-2.239 5,-5 -2.239,-5 -5,-5z" />
+        android:pathData="M27,49C24.239,49 22,51.239 22,54s2.239,5 5,5 5,-2.239 5,-5 -2.239,-5 -5,-5z" />
     <path
         android:fillColor="#202331"
-        android:pathData="M32,51C30.343,51 29,52.343 29,54s1.343,3 3,3 3,-1.343 3,-3 -1.343,-3 -3,-3z" />
+        android:pathData="M27,51C25.343,51 24,52.343 24,54s1.343,3 3,3 3,-1.343 3,-3 -1.343,-3 -3,-3z" />
 
     <!-- Three blue keys, each independently outlined in black. -->
     <path
