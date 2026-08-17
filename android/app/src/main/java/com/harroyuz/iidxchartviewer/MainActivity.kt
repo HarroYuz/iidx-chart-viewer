@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
@@ -1346,23 +1345,7 @@ private fun ChartPlayer(
         }
     }
 
-    Column(
-        modifier.fillMaxWidth()
-            .padding(horizontal = 18.dp)
-            .verticalScroll(rememberScrollState()),
-    ) {
-        if (configExpanded) {
-            PlayerConfigBox(
-                settings = settings,
-                isSp = data.chart.mode != "DP",
-                expanded = true,
-                onExpandedChange = { next ->
-                    if (!next) configExpanded = false
-                },
-                onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
-            )
-            Spacer(Modifier.height(8.dp))
-        }
+    Column(modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -1440,9 +1423,10 @@ private fun ChartPlayer(
             },
             modifier = Modifier.fillMaxWidth().height(24.dp),
         )
+        Spacer(Modifier.height(8.dp))
 
         Box(
-            Modifier.fillMaxWidth().height(520.dp).background(PlayerBackground),
+            Modifier.fillMaxWidth().weight(1f).background(PlayerBackground),
         ) {
             ChartCanvas(
                 data = data,
@@ -1460,19 +1444,17 @@ private fun ChartPlayer(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (!configExpanded) {
-            Spacer(Modifier.height(8.dp))
-            PlayerConfigBox(
-                settings = settings,
-                isSp = data.chart.mode != "DP",
-                expanded = false,
-                onExpandedChange = {
-                    configExpanded = it
-                    if (it) playing = false
-                },
-                onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
-            )
-        }
+        Spacer(Modifier.height(8.dp))
+        PlayerConfigBox(
+            settings = settings,
+            isSp = data.chart.mode != "DP",
+            expanded = configExpanded,
+            onExpandedChange = {
+                configExpanded = it
+                if (it) playing = false
+            },
+            onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
+        )
         if (!data.parsed) Text(data.parserMessage ?: "当前谱面格式尚未完成解析。", color = Orange, fontSize = 10.sp)
     }
 }
