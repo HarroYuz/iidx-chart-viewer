@@ -568,7 +568,7 @@ private fun ChartBrowserScreen(
                             }
                             .padding(horizontal = 24.dp, vertical = 16.dp),
                     ) {
-                        Text("版本 0.1.0", color = Muted, fontSize = 11.sp)
+                        Text("版本 1.0.1", color = Muted, fontSize = 11.sp)
                         Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("项目主页", color = Ink, fontSize = 14.sp)
