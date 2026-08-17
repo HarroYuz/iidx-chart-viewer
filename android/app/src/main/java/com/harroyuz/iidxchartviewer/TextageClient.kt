@@ -594,12 +594,18 @@ internal object TextageParser {
                 result.addAll(parsed)
             }
         }
-        val assignment = Regex("\\b${Regex.escape(variable)}\\s*\\[\\s*(\\d+)\\s*]\\s*=\\s*([^;\\n]+)")
-        assignment.findAll(source).forEach { match ->
-            val index = match.groupValues[1].toIntOrNull() ?: return@forEach
-            val value = parseSparseValue(match.groupValues[2], result)
-            while (result.size <= index) result += null
-            result[index] = value
+        val targetPattern = Regex("^${Regex.escape(variable)}\\s*\\[\\s*(\\d+)\\s*]$")
+        Regex("(?s)([^;]+);").findAll("$source;").forEach { statementMatch ->
+            val parts = statementMatch.groupValues[1].trim().split('=')
+            if (parts.size < 2) return@forEach
+            val targets = parts.dropLast(1).mapNotNull { targetPattern.matchEntire(it.trim()) }
+            if (targets.size != parts.size - 1) return@forEach
+            val value = parseSparseValue(parts.last(), result)
+            targets.forEach { target ->
+                val index = target.groupValues[1].toIntOrNull() ?: return@forEach
+                while (result.size <= index) result += null
+                result[index] = value
+            }
         }
         return result
     }
@@ -911,8 +917,26 @@ internal object TextageParser {
                 }
                 var valueIndex = 0
                 for (position in startOffset until measureTicks step step) {
-                    val lane = decoded.getOrNull(valueIndex)?.digitToIntOrNull() ?: 0
-                    if (lane != 0) result += chartNote(measureStartBeat, measureBeatLength, position.toFloat() / measureTicks, laneOffset + lane)
+                    val value = decoded.getOrNull(valueIndex)?.digitToIntOrNull() ?: 0
+                    if (compression == 0) {
+                        if (value != 0) {
+                            result += chartNote(
+                                measureStartBeat,
+                                measureBeatLength,
+                                position.toFloat() / measureTicks,
+                                laneOffset + value,
+                            )
+                        }
+                    } else if (value != 0) {
+                        // After '-' Textage uses the bit stream as a
+                        // scratch mask. Every active bit is lane 0, not key 1.
+                        result += chartNote(
+                            measureStartBeat,
+                            measureBeatLength,
+                            position.toFloat() / measureTicks,
+                            laneOffset,
+                        )
+                    }
                     valueIndex++
                 }
             } else {

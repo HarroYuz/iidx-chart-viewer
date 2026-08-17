@@ -8,7 +8,7 @@ import java.io.File
 
 class IidxLocalStore(context: Context) {
     private companion object {
-        const val CHART_CACHE_VERSION = 6
+        const val CHART_CACHE_VERSION = 7
         const val CATALOG_HEADER = "#iidx-catalog-v3"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 2
     }

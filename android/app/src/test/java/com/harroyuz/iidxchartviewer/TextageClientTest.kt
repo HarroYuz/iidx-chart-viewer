@@ -159,4 +159,58 @@ class TextageClientTest {
         assertEquals(35.5f, parsed.notes.first().beat, 0.001f)
         assertEquals(35.5f, parsed.bpmChanges.last().beat, 0.001f)
     }
+
+    @Test
+    fun decodesCompressedScratchAsScratchLane() {
+        val source = """
+            measure=4;
+            if(k){
+                sp[4]="#XAA4AAA9d-Qw";
+            }else{
+                sp[4]="";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "compressed-scratch-test",
+            title = "compressed-scratch-test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 2,
+            version = "test",
+            bpm = "200",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertEquals(2, parsed.notes.count { it.lane == 0 })
+        assertTrue(parsed.notes.none { it.lane == 1 })
+    }
+
+    @Test
+    fun expandsChainedSparseAssignments() {
+        val source = """
+            measure=30;
+            if(k){
+                sp[27]="01";
+                sp[28]=sp[29]=sp[27];
+            }else{
+                sp[27]="";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "chained-sparse-assignment-test",
+            title = "chained-sparse-assignment-test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 3,
+            version = "test",
+            bpm = "200",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertTrue(parsed.notes.any { it.lane == 0 && it.beat == 112f })
+    }
 }
