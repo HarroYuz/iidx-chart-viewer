@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,9 +33,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -44,13 +49,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -166,6 +174,7 @@ class MainActivity : ComponentActivity() {
                     onOpenBjmProfile = {},
                     onSyncBjm = ::syncBjm,
                     onRefreshTextage = ::refreshTextage,
+                    onOpenGithub = ::openGithub,
                     onOpenChart = ::openChart,
                     onBack = ::closeChart,
                     onRetryChart = { selectedChart?.let(::openChart) },
@@ -203,6 +212,10 @@ class MainActivity : ComponentActivity() {
     private fun openBjmLogin() {
         loginPending = true
         loginLauncher.launch(Intent(this, BjmLoginActivity::class.java))
+    }
+
+    private fun openGithub() {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/HarroYuz/iidx-chart-viewer")))
     }
 
     private fun syncBjm() {
@@ -330,6 +343,7 @@ private fun IidxApp(
     onOpenBjmProfile: () -> Unit,
     onSyncBjm: () -> Unit,
     onRefreshTextage: () -> Unit,
+    onOpenGithub: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onBack: () -> Unit,
     onRetryChart: () -> Unit,
@@ -360,6 +374,7 @@ private fun IidxApp(
                     onOpenBjmProfile = onOpenBjmProfile,
                     onSyncBjm = onSyncBjm,
                     onRefreshTextage = onRefreshTextage,
+                    onOpenGithub = onOpenGithub,
                     onOpenChart = onOpenChart,
                     modifier = Modifier.alpha(if (selectedChart == null) 1f else 0f),
                 )
@@ -426,6 +441,7 @@ private fun ChartBrowserScreen(
     onOpenBjmProfile: () -> Unit,
     onSyncBjm: () -> Unit,
     onRefreshTextage: () -> Unit,
+    onOpenGithub: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -452,96 +468,146 @@ private fun ChartBrowserScreen(
             )
         }
     }
-    var menuExpanded by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    fun closeDrawer() {
+        drawerScope.launch { drawerState.close() }
+    }
 
-    Column(modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Column(Modifier.fillMaxSize()) {
+                    Text(
+                        "菜单",
+                        color = Ink,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        NavigationDrawerItem(
+                            label = { Text("更新谱面数据") },
+                            selected = false,
+                            onClick = {
+                                if (!textageSyncing) {
+                                    closeDrawer()
+                                    onRefreshTextage()
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp).alpha(if (textageSyncing) .5f else 1f),
+                        )
+                        NavigationDrawerItem(
+                            label = { Text(if (bjmSyncing) "同步 BJM 成绩中…" else "同步 BJM 成绩") },
+                            selected = false,
+                            onClick = {
+                                if (!bjmSyncing && state.bjmUser != null) {
+                                    closeDrawer()
+                                    onSyncBjm()
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp).alpha(if (bjmSyncing || state.bjmUser == null) .5f else 1f),
+                        )
+                    }
+                    HorizontalDivider()
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clickable {
+                                closeDrawer()
+                                onOpenGithub()
+                            }
+                            .padding(horizontal = 24.dp, vertical = 16.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("项目主页", color = Ink, fontSize = 14.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                painter = painterResource(R.drawable.ic_github),
+                                contentDescription = "GitHub",
+                                tint = Ink,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "https://github.com/HarroYuz/iidx-chart-viewer",
+                            color = Muted,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        },
+    ) {
+        Column(modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 TextButton(
-                    onClick = { menuExpanded = true },
+                    onClick = { drawerScope.launch { drawerState.open() } },
                     modifier = Modifier.size(42.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("☰", color = Ink, fontSize = 24.sp) }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("更新谱面数据") },
-                        onClick = {
-                            menuExpanded = false
-                            onRefreshTextage()
-                        },
-                        enabled = !textageSyncing,
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (bjmSyncing) "同步 BJM 成绩中…" else "同步 BJM 成绩") },
-                        onClick = {
-                            menuExpanded = false
-                            onSyncBjm()
-                        },
-                        enabled = !bjmSyncing && state.bjmUser != null,
-                    )
-                }
-            }
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                Text("Style：", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(5.dp))
-                OutlinedButton(
-                    onClick = { onModeChange(if (mode == "SP") "DP" else "SP") },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier.height(36.dp),
-                ) {
-                    Text(mode, color = Purple, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            val avatarText = state.bjmUser
-                ?.let { (it.name.ifBlank { it.id }).firstOrNull()?.toString()?.uppercase() }
-                ?: "○"
-            Box(
-                Modifier.size(36.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(if (state.bjmUser == null) Panel else Purple.copy(alpha = .18f))
-                    .clickable { if (state.bjmUser == null) onLogin() else onOpenBjmProfile() },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (state.bjmUser == null) {
-                    Canvas(Modifier.size(22.dp)) {
-                        drawCircle(Muted, radius = size.minDimension * .16f, center = Offset(size.width / 2f, size.height * .28f))
-                        drawRoundRect(
-                            color = Muted,
-                            topLeft = Offset(size.width * .18f, size.height * .55f),
-                            size = Size(size.width * .64f, size.height * .32f),
-                            cornerRadius = CornerRadius(size.width * .16f),
-                        )
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text("Style：", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(5.dp))
+                    OutlinedButton(
+                        onClick = { onModeChange(if (mode == "SP") "DP" else "SP") },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(36.dp),
+                    ) {
+                        Text(mode, color = Purple, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
-                } else {
-                    Text(avatarText, color = Purple, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(12.dp))
+                val avatarText = state.bjmUser
+                    ?.let { (it.name.ifBlank { it.id }).firstOrNull()?.toString()?.uppercase() }
+                    ?: "○"
+                Box(
+                    Modifier.size(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(if (state.bjmUser == null) Panel else Purple.copy(alpha = .18f))
+                        .clickable { if (state.bjmUser == null) onLogin() else onOpenBjmProfile() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (state.bjmUser == null) {
+                        Canvas(Modifier.size(22.dp)) {
+                            drawCircle(Muted, radius = size.minDimension * .16f, center = Offset(size.width / 2f, size.height * .28f))
+                            drawRoundRect(
+                                color = Muted,
+                                topLeft = Offset(size.width * .18f, size.height * .55f),
+                                size = Size(size.width * .64f, size.height * .32f),
+                                cornerRadius = CornerRadius(size.width * .16f),
+                            )
+                        }
+                    } else {
+                        Text(avatarText, color = Purple, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-        }
 
-        if (textageProgress != null) TextageSyncBanner(textageProgress)
+            if (textageProgress != null) TextageSyncBanner(textageProgress)
 
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-            placeholder = { Text("搜索曲名或艺术家", color = Muted) },
-            singleLine = true,
-        )
-        Spacer(Modifier.height(6.dp))
-        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-            items(songs, key = { it.key }) { song ->
-                SongGroupRow(song, onOpenChart, Modifier.padding(horizontal = 18.dp, vertical = 5.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                placeholder = { Text("搜索曲名或艺术家", color = Muted) },
+                singleLine = true,
+            )
+            Spacer(Modifier.height(6.dp))
+            LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                items(songs, key = { it.key }) { song ->
+                    SongGroupRow(song, onOpenChart, Modifier.padding(horizontal = 18.dp, vertical = 5.dp))
+                }
+                item { Spacer(Modifier.height(18.dp)) }
             }
-            item { Spacer(Modifier.height(18.dp)) }
         }
     }
 }
