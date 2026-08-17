@@ -1085,7 +1085,7 @@ private fun PlayerConfigBox(
                             onSettingsChange(settings.copy(speed = next.coerceIn(1, 100)))
                         }
                     },
-                    modifier = Modifier.width(46.dp).height(46.dp),
+                    modifier = Modifier.width(46.dp).height(42.dp),
                     textStyle = TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1219,6 +1219,7 @@ private fun RandomMappingRow(
                 Text(label, color = Muted, fontSize = 10.sp, lineHeight = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("拖动配置", color = Muted, fontSize = 7.sp, lineHeight = 8.sp, maxLines = 1)
             }
+            Spacer(Modifier.width(6.dp))
             mapping.forEachIndexed { index, value ->
                 RandomLaneButton(
                     value = value,
@@ -1240,7 +1241,7 @@ private fun RandomMappingRow(
                 value = null,
                 dragThreshold = dragThreshold,
                 onRandomize = { onMappingChange((1..7).shuffled()) },
-                modifier = Modifier.padding(start = 2.dp),
+                modifier = Modifier.padding(start = 6.dp),
             )
         }
     }
@@ -1266,7 +1267,7 @@ private fun RandomLaneButton(
                 }
             }
             .zIndex(if (value != null && dragDistance != 0f) 1f else 0f)
-            .size(if (value == null) 36.dp else 28.dp)
+            .size(28.dp)
             .clip(buttonShape)
             .background(if (value == null) Panel else if (value % 2 == 1) ComposeColor.White else ComposeColor(0xFF252535))
             .border(1.dp, ComposeColor(0xFF11131A), buttonShape)
