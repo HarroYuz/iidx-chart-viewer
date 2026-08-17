@@ -553,7 +553,7 @@ private fun ChartBrowserScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("项目主页", color = Ink, fontSize = 14.sp)
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.weight(1f))
                             Icon(
                                 painter = painterResource(R.drawable.ic_github),
                                 contentDescription = "GitHub",
