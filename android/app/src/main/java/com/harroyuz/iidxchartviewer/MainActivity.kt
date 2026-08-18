@@ -786,37 +786,64 @@ private fun ChartBrowserScreen(
                 .sorted()
                 .toList()
         }
-        val filteredCharts = remember(state.charts, mode, query, selectedVersion, selectedLevel) {
-            state.charts.filter {
-                it.mode == mode &&
-                    (query.isBlank() || "${it.title} ${it.subtitle} ${it.genre} ${it.composer}".contains(query, ignoreCase = true)) &&
-                    (selectedVersion == null || it.version == selectedVersion) &&
-                    (selectedLevel == null || it.level == selectedLevel)
-            }
+        val allSongs = remember(state.charts, mode) {
+            state.charts
+                .asSequence()
+                .filter { it.mode == mode }
+                .groupBy { chart ->
+                    listOf(
+                        chartSongKey(chart),
+                        chart.title,
+                        chart.subtitle,
+                        chart.composer,
+                    ).joinToString("\u0000")
+                }
+                .values
+                .map { group ->
+                    val songKey = listOf(
+                        chartSongKey(group.first()),
+                        group.first().title,
+                        group.first().subtitle,
+                        group.first().composer,
+                    ).joinToString("\u0000")
+                    SongGroup(
+                        key = songKey,
+                        title = group.first().title,
+                        subtitle = group.first().subtitle,
+                        genre = group.first().genre,
+                        composer = group.first().composer,
+                        version = group.first().version,
+                        sourceLabel = group.first().sourceLabel,
+                        charts = group,
+                    )
+                }
         }
-        val songs = remember(filteredCharts) {
-            filteredCharts.groupBy { chart ->
-                listOf(
-                    chartSongKey(chart),
-                    chart.title,
-                    chart.subtitle,
-                    chart.composer,
-                ).joinToString("\u0000")
-            }.values.map { group ->
-                SongGroup(
-                    key = group.first().id.substringBeforeLast('-'),
-                    title = group.first().title,
-                    subtitle = group.first().subtitle,
-                    genre = group.first().genre,
-                    composer = group.first().composer,
-                    version = group.first().version,
-                    sourceLabel = group.first().sourceLabel,
-                    charts = group.groupBy { it.difficulty }.values.map { sameDifficulty ->
-                        sameDifficulty.maxWithOrNull(
-                            compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
-                        ) ?: sameDifficulty.first()
-                    }.sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level }),
-                )
+        val songs = remember(allSongs, query, selectedVersion, selectedLevel) {
+            allSongs.mapNotNull { song ->
+                val matchingCharts = song.charts.filter {
+                    (selectedVersion == null || it.version == selectedVersion) &&
+                        (selectedLevel == null || it.level == selectedLevel)
+                }
+                if (matchingCharts.isEmpty()) {
+                    null
+                } else if (
+                    query.isNotBlank() &&
+                    !"${song.title} ${song.subtitle} ${song.genre} ${song.composer}".contains(query, ignoreCase = true)
+                ) {
+                    null
+                } else {
+                    song.copy(
+                        charts = matchingCharts
+                            .groupBy { it.difficulty }
+                            .values
+                            .map { sameDifficulty ->
+                                sameDifficulty.maxWithOrNull(
+                                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                                ) ?: sameDifficulty.first()
+                            }
+                            .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level }),
+                    )
+                }
             }
         }
         Column(modifier.fillMaxSize()) {
@@ -881,6 +908,13 @@ private fun ChartBrowserScreen(
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("搜索曲名或艺术家", color = Muted) },
                     singleLine = true,
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Text("×", color = Muted, fontSize = 20.sp)
+                            }
+                        }
+                    },
                 )
                 IconButton(onClick = { filterExpanded = !filterExpanded }) {
                     FunnelIcon(if (filterExpanded || selectedVersion != null || selectedLevel != null) Purple else Muted)
