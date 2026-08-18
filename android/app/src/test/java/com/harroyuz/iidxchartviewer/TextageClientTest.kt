@@ -247,8 +247,9 @@ class TextageClientTest {
 
     @Test
     fun labelsBelowNextGradeAsTheCurrentGrade() {
-        assertEquals("A - 6", rankSummary(150, 100))
-        assertEquals("AA - 8", rankSummary(170, 100))
+        assertEquals("AA - 6", rankSummary(150, 100))
+        assertEquals("AAA - 8", rankSummary(170, 100))
+        assertEquals("A", listScoreRankName(150, 100))
     }
 
     @Test

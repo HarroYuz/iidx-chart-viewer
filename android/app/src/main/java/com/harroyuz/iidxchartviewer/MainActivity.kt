@@ -1850,7 +1850,7 @@ private fun DifficultyChip(
                 modifier = Modifier.align(Alignment.BottomStart),
             )
             Text(
-                scoreRankName(score.exScore, chart.notes),
+                listScoreRankName(score.exScore, chart.notes),
                 style = TextStyle(
                     color = Ink,
                     fontSize = 10.sp,
@@ -1914,6 +1914,16 @@ private fun clearFlagColor(value: Int): ComposeColor = when (value) {
 
 private fun scoreRankName(exScore: Int, noteCount: Int): String =
     rankSummary(exScore, noteCount).substringBefore(' ').takeIf { it != "—" }.orEmpty()
+
+internal fun listScoreRankName(exScore: Int, noteCount: Int): String {
+    val summary = rankSummary(exScore, noteCount)
+    val rank = summary.substringBefore(' ').takeIf { it != "—" }.orEmpty()
+    val delta = summary.substringAfter(' ', "").trimStart()
+    if (!delta.startsWith("-") || rank.isBlank()) return rank
+    val rankNames = listOf("F", "E", "D", "C", "B", "A", "AA", "AAA")
+    val index = rankNames.indexOf(rank)
+    return rankNames.getOrElse((index - 1).coerceAtLeast(0)) { rank }
+}
 
 private fun rankDeltaText(exScore: Int, noteCount: Int): String =
     rankSummary(exScore, noteCount).substringAfter(' ', "").trim()
@@ -2102,9 +2112,7 @@ internal fun rankSummary(exScore: Int, noteCount: Int): String {
     if (nextThreshold == null) return "AAA + $rankPlus"
     val nextMinus = nextThreshold - exScore
     return if (rankIndex < 0 || nextMinus < rankPlus) {
-        // A score below the next threshold is still the lower grade. Keep the
-        // negative distance, but do not label an A-range score as AA-/AAA-.
-        "${rankNames.getOrElse(rankIndex) { "F" }} - $nextMinus"
+        "${rankNames.getOrElse(nextIndex) { "AAA" }} - $nextMinus"
     } else {
         "${rankNames.getOrElse(rankIndex) { "F" }} + $rankPlus"
     }
