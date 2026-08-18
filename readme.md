@@ -20,8 +20,6 @@
 ./gradlew -p android :app:testDebugUnitTest :app:assembleDebug
 ```
 
-仓库已包含 Gradle Wrapper。请在仓库根目录直接执行上面的命令；联网时 Wrapper 会自动获取所需的 Gradle 版本和构建依赖。
-
 Debug APK 输出在：
 
 ```text
