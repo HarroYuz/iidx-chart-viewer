@@ -1170,13 +1170,13 @@ private fun textageVersionIndex(url: String): Int? =
         if (directory == "s") 35 else directory.toIntOrNull()
     }
 
-private fun chartSongKey(chart: IidxChart): String =
+internal fun chartSongKey(chart: IidxChart): String =
     chart.textageUrl
         ?.substringBefore('?')
         ?.substringAfterLast('/')
         ?.substringBeforeLast('.')
         ?.takeIf { it.isNotBlank() }
-        ?: chart.id.substringBeforeLast('-')
+        ?: chart.id.substringBeforeLast('-').removePrefix("textage-")
 
 private fun displayTitle(title: String, sourceLabel: String): String =
     listOf(title.trim(), sourceLabel.trim()).filter { it.isNotBlank() }.joinToString(" ")

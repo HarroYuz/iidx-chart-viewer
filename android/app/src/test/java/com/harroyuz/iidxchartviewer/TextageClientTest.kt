@@ -30,6 +30,30 @@ class TextageClientTest {
     }
 
     @Test
+    fun groupsUnavailableTextageDifficultyWithItsSong() {
+        val available = IidxChart(
+            id = "textage-carapain-sph",
+            title = "Caramel Pain",
+            mode = "SP",
+            difficulty = "H",
+            level = 6,
+            notes = 525,
+            version = "Sparkle Shower",
+            textageUrl = "https://textage.cc/score/33/carapain.html",
+        )
+        val unavailable = available.copy(
+            id = "textage-carapain-spn",
+            difficulty = "N",
+            level = 3,
+            notes = 0,
+            textageUrl = null,
+        )
+
+        assertEquals(chartSongKey(available), chartSongKey(unavailable))
+        assertEquals("carapain", chartSongKey(unavailable))
+    }
+
+    @Test
     fun parsesTextageSourceLabelAndSubstreamUrl() = runBlocking {
         val versions = (0 until 36).joinToString(",") { "\"v$it\"" }
         val source = """
