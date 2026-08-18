@@ -1125,8 +1125,12 @@ private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modi
             Column(horizontalAlignment = Alignment.End) {
                 Text(song.version.ifBlank { "—" }, color = NormalBlue, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "BPM ${song.charts.firstOrNull()?.bpm?.ifBlank { "—" } ?: "—"}",
-                    color = NormalBlue,
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = Muted)) { append("BPM ") }
+                        withStyle(SpanStyle(color = NormalBlue)) {
+                            append(song.charts.firstOrNull()?.bpm?.ifBlank { "—" } ?: "—")
+                        }
+                    },
                     fontSize = 9.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1210,7 +1214,7 @@ private fun ChartDetailScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(
                 onClick = onBack,
-                modifier = Modifier.size(width = 72.dp, height = 36.dp),
+                modifier = Modifier.size(width = 64.dp, height = 32.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
             ) {
                 Row(
