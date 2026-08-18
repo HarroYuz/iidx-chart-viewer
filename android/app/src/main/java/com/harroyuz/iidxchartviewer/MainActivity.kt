@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity() {
     private var updateInstalling by mutableStateOf(false)
     private var settingsDialogVisible by mutableStateOf(false)
     private var loginPending = false
+    private var exitToastShown = false
 
     private val loginLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -225,6 +227,7 @@ class MainActivity : ComponentActivity() {
                     onDownloadUpdate = ::downloadUpdate,
                     onOpenChart = ::openChart,
                     onBack = ::closeChart,
+                    onRequestExit = ::requestExit,
                     onRetryChart = { selectedChart?.let(::openChart) },
                     onPlayerSettingsChange = ::savePlayerSettings,
                 )
@@ -433,6 +436,19 @@ class MainActivity : ComponentActivity() {
         chartLoading = false
     }
 
+    private fun requestExit() {
+        if (exitToastShown) {
+            finishAndRemoveTask()
+            return
+        }
+        exitToastShown = true
+        Toast.makeText(this, "再返回一次以退出", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            delay(2_200L)
+            exitToastShown = false
+        }
+    }
+
     private fun savePlayerSettings(settings: PlayerSettings) {
         playerSettings = settings.copy(speed = settings.safeSpeed)
         store.savePlayerSettings(playerSettings)
@@ -472,6 +488,7 @@ private fun IidxApp(
     onDownloadUpdate: (GithubReleaseInfo) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onBack: () -> Unit,
+    onRequestExit: () -> Unit,
     onRetryChart: () -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
@@ -509,6 +526,9 @@ private fun IidxApp(
                     autoUpdateEnabled = autoUpdateEnabled,
                     onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
                     onOpenChart = onOpenChart,
+                    showingDetail = selectedChart != null,
+                    onBack = onBack,
+                    onRequestExit = onRequestExit,
                     modifier = Modifier.alpha(if (selectedChart == null) 1f else 0f),
                 )
                 if (selectedChart != null) {
@@ -592,6 +612,9 @@ private fun ChartBrowserScreen(
     autoUpdateEnabled: Boolean,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
+    showingDetail: Boolean,
+    onBack: () -> Unit,
+    onRequestExit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -650,6 +673,14 @@ private fun ChartBrowserScreen(
     val drawerScope = rememberCoroutineScope()
     fun closeDrawer() {
         drawerScope.launch { drawerState.close() }
+    }
+
+    BackHandler {
+        when {
+            drawerState.isOpen -> closeDrawer()
+            showingDetail -> onBack()
+            else -> onRequestExit()
+        }
     }
 
     ModalNavigationDrawer(
@@ -754,7 +785,7 @@ private fun ChartBrowserScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("☰", color = Ink, fontSize = 24.sp) }
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("谱面列表", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
                     Text("Style：", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(5.dp))
@@ -1078,9 +1109,9 @@ private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modi
             Column(Modifier.weight(1f).padding(end = 10.dp)) {
                 Text(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(4.dp))
-                Text(song.title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.title, color = Ink, fontSize = 16.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (song.subtitle.isNotBlank()) {
-                    Text(song.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(song.subtitle, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -1194,29 +1225,21 @@ private fun ChartDetailScreen(
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(3.dp))
-                Text(chart.title, color = Ink, fontSize = 27.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    Text(chart.title, color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                }
                 if (chart.subtitle.isNotBlank()) {
-                    Text(chart.subtitle, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        Text(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp, maxLines = 1, softWrap = false)
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(chart.version.ifBlank { "—" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "BPM ${chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }}",
-                    color = Muted,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    "NOTES ${(chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 } ?: "—"}",
-                    color = Muted,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                DetailStat("版本 ", chart.version.ifBlank { "—" })
+                DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" })
+                DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—")
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
@@ -1405,6 +1428,13 @@ private fun PlayerConfigBox(
                         onSettingsChange(settings.copy(playOption1P = if (selected == "无") "NONE" else selected))
                     },
                 )
+                if (settings.safePlayOption1P == "RANDOM") {
+                    RandomMappingRow(
+                        label = "",
+                        mapping = settings.safeRandomMapping1P,
+                        onMappingChange = { onSettingsChange(settings.copy(randomMapping1P = it)) },
+                    )
+                }
                 PlayerSettingChoiceRow(
                     label = "2P",
                     choices = listOf("无", "MIRROR", "RANDOM"),
@@ -1417,16 +1447,9 @@ private fun PlayerConfigBox(
                         onSettingsChange(settings.copy(playOption2P = if (selected == "无") "NONE" else selected))
                     },
                 )
-                if (settings.safePlayOption1P == "RANDOM") {
-                    RandomMappingRow(
-                        label = "1P：",
-                        mapping = settings.safeRandomMapping1P,
-                        onMappingChange = { onSettingsChange(settings.copy(randomMapping1P = it)) },
-                    )
-                }
                 if (settings.safePlayOption2P == "RANDOM") {
                     RandomMappingRow(
-                        label = "2P：",
+                        label = "",
                         mapping = settings.safeRandomMapping2P,
                         onMappingChange = { onSettingsChange(settings.copy(randomMapping2P = it)) },
                     )
@@ -1676,7 +1699,7 @@ private fun ChartPlayer(
                 Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text(
                     buildAnnotatedString {
-                        withStyle(SpanStyle(color = Muted)) { append("NOTES ") }
+                        withStyle(SpanStyle(color = Muted)) { append("NOTE ") }
                         withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/$totalNotes") }
                         withStyle(SpanStyle(color = Muted)) { append(" · MEASURE ") }
                         withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/$totalMeasures") }
@@ -1750,38 +1773,43 @@ private fun ChartPlayer(
         )
         Spacer(Modifier.height(8.dp))
 
-        Box(
-            Modifier.fillMaxWidth().weight(1f).background(PlayerBackground),
-        ) {
-            ChartCanvas(
-                data = data,
-                currentBeat = currentBeat,
-                speed = safeSpeed,
-                showBarLines = settings.showBarLines,
-                showBpmChanges = settings.showBpmChanges,
-                showMeasureNumbers = settings.showMeasureNumbers,
-                side = settings.side,
-                playOption = settings.safePlayOption,
-                playOption1P = settings.safePlayOption1P,
-                playOption2P = settings.safePlayOption2P,
-                randomMapping1P = settings.safeRandomMapping1P,
-                randomMapping2P = settings.safeRandomMapping2P,
-                playing = playing,
-                onCurrentBeatChange = { currentBeat = it.coerceIn(0f, duration) },
-                modifier = Modifier.fillMaxSize(),
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            Box(
+                Modifier.fillMaxWidth()
+                    .height(360.dp)
+                    .align(Alignment.TopCenter)
+                    .background(PlayerBackground),
+            ) {
+                ChartCanvas(
+                    data = data,
+                    currentBeat = currentBeat,
+                    speed = safeSpeed,
+                    showBarLines = settings.showBarLines,
+                    showBpmChanges = settings.showBpmChanges,
+                    showMeasureNumbers = settings.showMeasureNumbers,
+                    side = settings.side,
+                    playOption = settings.safePlayOption,
+                    playOption1P = settings.safePlayOption1P,
+                    playOption2P = settings.safePlayOption2P,
+                    randomMapping1P = settings.safeRandomMapping1P,
+                    randomMapping2P = settings.safeRandomMapping2P,
+                    playing = playing,
+                    onCurrentBeatChange = { currentBeat = it.coerceIn(0f, duration) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            PlayerConfigBox(
+                settings = settings,
+                isSp = data.chart.mode != "DP",
+                expanded = configExpanded,
+                onExpandedChange = {
+                    configExpanded = it
+                    if (it) playing = false
+                },
+                onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
+                modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f),
             )
         }
-        Spacer(Modifier.height(8.dp))
-        PlayerConfigBox(
-            settings = settings,
-            isSp = data.chart.mode != "DP",
-            expanded = configExpanded,
-            onExpandedChange = {
-                configExpanded = it
-                if (it) playing = false
-            },
-            onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
-        )
         if (!data.parsed) Text(data.parserMessage ?: "当前谱面格式尚未完成解析。", color = Orange, fontSize = 10.sp)
     }
 }
@@ -2037,6 +2065,19 @@ private fun DetailValue(label: String, value: String) {
         Spacer(Modifier.width(4.dp))
         Text(value, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+@Composable
+private fun DetailStat(label: String, value: String) {
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = Muted)) { append(label) }
+            withStyle(SpanStyle(color = NormalBlue)) { append(value) }
+        },
+        fontSize = 10.sp,
+        maxLines = 1,
+        softWrap = false,
+    )
 }
 
 private fun difficultyName(value: String): String = when (value) {
