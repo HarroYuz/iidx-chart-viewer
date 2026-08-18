@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Paint
@@ -19,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -232,6 +235,7 @@ class MainActivity : ComponentActivity() {
                     onDownloadUpdate = ::downloadUpdate,
                     onOpenChart = ::openChart,
                     onOpenSong = ::openSong,
+                    onCopyText = ::copyText,
                     onBack = ::handleBack,
                     onRequestExit = ::requestExit,
                     onRetryChart = { selectedChart?.let(::openChart) },
@@ -274,6 +278,14 @@ class MainActivity : ComponentActivity() {
 
     private fun openGithub() {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/HarroYuz/iidx-chart-viewer")))
+    }
+
+    private fun copyText(value: String) {
+        val text = value.trim()
+        if (text.isBlank()) return
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("IIDX Data", text))
+        message = "已复制：$text"
     }
 
     private fun checkForUpdatesIfDue() {
@@ -533,6 +545,7 @@ private fun IidxApp(
     onDownloadUpdate: (GithubReleaseInfo) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onOpenSong: (IidxChart) -> Unit,
+    onCopyText: (String) -> Unit,
     onBack: () -> Unit,
     onRequestExit: () -> Unit,
     onRetryChart: () -> Unit,
@@ -573,17 +586,18 @@ private fun IidxApp(
                     onClearChartCache = onClearChartCache,
                     onOpenChart = onOpenChart,
                     onOpenSong = onOpenSong,
+                    onCopyText = onCopyText,
                     showingDetail = selectedSong != null || selectedChart != null,
                     onBack = onBack,
                     onRequestExit = onRequestExit,
                     modifier = Modifier.alpha(if (selectedSong == null && selectedChart == null) 1f else 0f),
                 )
                 if (selectedChart != null) {
-                    val selectedSongKey = chartSongKey(selectedChart)
+                    val selectedSongKey = songGroupKey(selectedChart)
                     val family = state.charts
                         .filter {
                             it.mode == selectedChart.mode &&
-                                chartSongKey(it) == selectedSongKey
+                                songGroupKey(it) == selectedSongKey
                         }
                         .groupBy { it.difficulty }
                         .values
@@ -607,7 +621,7 @@ private fun IidxApp(
                             val alternate = state.charts
                                 .filter {
                                     it.mode == targetMode &&
-                                        chartSongKey(it) == selectedSongKey &&
+                                        songGroupKey(it) == selectedSongKey &&
                                         it.textageUrl != null
                                 }
                                 .maxWithOrNull(
@@ -617,14 +631,15 @@ private fun IidxApp(
                             if (alternate != null) onOpenChart(alternate) else onBack()
                         },
                         onOpenChart = onOpenChart,
+                        onCopyText = onCopyText,
                         onPlayerSettingsChange = onPlayerSettingsChange,
                     )
                 } else if (selectedSong != null) {
-                    val selectedSongKey = chartSongKey(selectedSong)
+                    val selectedSongKey = songGroupKey(selectedSong)
                     val family = state.charts
                         .filter {
                             it.mode == selectedSong.mode &&
-                                chartSongKey(it) == selectedSongKey
+                                songGroupKey(it) == selectedSongKey
                         }
                         .groupBy { it.difficulty }
                         .values
@@ -646,7 +661,7 @@ private fun IidxApp(
                             val alternate = state.charts
                                 .filter {
                                     it.mode == targetMode &&
-                                        chartSongKey(it) == selectedSongKey
+                                        songGroupKey(it) == selectedSongKey
                                 }
                                 .maxWithOrNull(
                                     compareBy<IidxChart>({ it.textageUrl != null }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
@@ -657,6 +672,7 @@ private fun IidxApp(
                             }
                         },
                         onOpenChart = onOpenChart,
+                        onCopyText = onCopyText,
                     )
                 }
             }
@@ -696,6 +712,7 @@ private fun ChartBrowserScreen(
     onClearChartCache: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onOpenSong: (IidxChart) -> Unit,
+    onCopyText: (String) -> Unit,
     showingDetail: Boolean,
     onBack: () -> Unit,
     onRequestExit: () -> Unit,
@@ -854,24 +871,11 @@ private fun ChartBrowserScreen(
             state.charts
                 .asSequence()
                 .filter { it.mode == mode }
-                .groupBy { chart ->
-                    listOf(
-                        chartSongKey(chart),
-                        chart.title,
-                        chart.subtitle,
-                        chart.composer,
-                    ).joinToString("\u0000")
-                }
+                .groupBy(::songGroupKey)
                 .values
                 .map { group ->
-                    val songKey = listOf(
-                        chartSongKey(group.first()),
-                        group.first().title,
-                        group.first().subtitle,
-                        group.first().composer,
-                    ).joinToString("\u0000")
                     SongGroup(
-                        key = songKey,
+                        key = songGroupKey(group.first()),
                         title = group.first().title,
                         subtitle = group.first().subtitle,
                         genre = group.first().genre,
@@ -881,6 +885,9 @@ private fun ChartBrowserScreen(
                         charts = group,
                     )
                 }
+        }
+        val scoreByKey = remember(state.bjmUser, state.bjmScores) {
+            if (state.bjmUser == null) emptyMap() else state.bjmScores.associateBy { it.key }
         }
         val songs = remember(allSongs, query, selectedVersion, selectedLevel) {
             allSongs.mapNotNull { song ->
@@ -1029,7 +1036,15 @@ private fun ChartBrowserScreen(
             Spacer(Modifier.height(6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                 items(songs, key = { it.key }) { song ->
-                    SongGroupRow(song, onOpenSong, onOpenChart, Modifier.padding(horizontal = 18.dp, vertical = 5.dp))
+                    SongGroupRow(
+                        song = song,
+                        scoreByKey = scoreByKey,
+                        bjmMusic = state.bjmMusic,
+                        onOpenSong = onOpenSong,
+                        onOpenChart = onOpenChart,
+                        onCopyText = onCopyText,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 5.dp),
+                    )
                 }
                 item { Spacer(Modifier.height(18.dp)) }
             }
@@ -1242,6 +1257,14 @@ internal fun chartSongKey(chart: IidxChart): String =
         ?.takeIf { it.isNotBlank() }
         ?: chart.id.substringBeforeLast('-').removePrefix("textage-")
 
+internal fun songGroupKey(chart: IidxChart): String = listOf(
+    chart.title,
+    chart.subtitle,
+    chart.genre,
+    chart.composer,
+    chart.sourceLabel,
+).joinToString("\u0000", transform = ::normalizeMusicTitle)
+
 private fun displayTitle(title: String, sourceLabel: String): String =
     listOf(title.trim(), sourceLabel.trim()).filter { it.isNotBlank() }.joinToString(" ")
 
@@ -1343,8 +1366,11 @@ private fun TextageSyncBanner(progress: TextageSyncProgress) {
 @Composable
 private fun SongGroupRow(
     song: SongGroup,
+    scoreByKey: Map<String, BjmScore>,
+    bjmMusic: List<BjmMusic>,
     onOpenSong: (IidxChart) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
+    onCopyText: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val representative = song.charts.firstOrNull()
@@ -1356,7 +1382,14 @@ private fun SongGroupRow(
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                Text(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                CopyableText(
+                    text = song.genre.ifBlank { "未知曲风" },
+                    color = Muted,
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    onCopy = onCopyText,
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 16.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (song.subtitle.isNotBlank()) {
@@ -1392,7 +1425,11 @@ private fun SongGroupRow(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             song.charts.forEach { chart ->
-                DifficultyChip(chart, onOpenChart)
+                DifficultyChip(
+                    chart = chart,
+                    onOpenChart = onOpenChart,
+                    score = scoreForChart(chart, findBjmMusic(chart, bjmMusic), scoreByKey),
+                )
             }
         }
     }
@@ -1403,6 +1440,7 @@ private fun DifficultyChip(
     chart: IidxChart,
     onOpenChart: (IidxChart) -> Unit,
     selected: Boolean = false,
+    score: BjmScore? = null,
 ) {
     val accent = difficultyColor(chart.difficulty)
     val shape = RoundedCornerShape(14.dp)
@@ -1432,7 +1470,33 @@ private fun DifficultyChip(
             .padding(horizontal = 5.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(if (chart.level > 0) chart.level.toString() else "—", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        if (score == null) {
+            Text(if (chart.level > 0) chart.level.toString() else "—", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        } else {
+            Column(
+                Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(if (chart.level > 0) chart.level.toString() else "—", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        clearFlagShortName(score.clearFlag),
+                        color = clearFlagColor(score.clearFlag),
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                    Text(
+                        scoreRankName(score.exScore, chart.notes),
+                        color = Ink,
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1445,6 +1509,84 @@ private fun difficultyColor(value: String): ComposeColor = when (value) {
     else -> Muted
 }
 
+private fun scoreForChart(
+    chart: IidxChart,
+    music: BjmMusic?,
+    scoreByKey: Map<String, BjmScore>,
+): BjmScore? = music?.let { matchedMusic ->
+    scoreByKey["${matchedMusic.musicId}:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"]
+}
+
+private fun clearFlagShortName(value: Int): String = when (value) {
+    1 -> "F"
+    2 -> "AC"
+    3 -> "EC"
+    4 -> "NC"
+    5 -> "HC"
+    6 -> "EXC"
+    7 -> "FC"
+    else -> ""
+}
+
+private fun clearFlagDetailName(value: Int): String = when (value) {
+    1 -> "FAILED"
+    2 -> "AC-CLEAR"
+    3 -> "EC-CLEAR"
+    4 -> "NC-CLEAR"
+    5 -> "HC-CLEAR"
+    6 -> "EXH-CLEAR"
+    7 -> "FULL COMBO"
+    else -> "NO PLAY"
+}
+
+private fun clearFlagColor(value: Int): ComposeColor = when (value) {
+    1 -> ComposeColor(0xFFE05252)
+    2 -> ComposeColor(0xFFE59B3C)
+    3 -> ComposeColor(0xFF4AAE68)
+    4 -> Cyan
+    5 -> NormalBlue
+    6 -> Purple
+    7 -> ComposeColor(0xFFB68A00)
+    else -> Muted
+}
+
+private fun scoreRankName(exScore: Int, noteCount: Int): String =
+    rankSummary(exScore, noteCount).substringBefore(' ').takeIf { it != "—" }.orEmpty()
+
+private fun rankDeltaText(exScore: Int, noteCount: Int): String =
+    rankSummary(exScore, noteCount).substringAfter(' ', "").trim()
+
+@Composable
+private fun ClearBadge(text: String, color: ComposeColor) {
+    Text(
+        text,
+        color = color,
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .border(1.dp, Ink, RoundedCornerShape(3.dp))
+            .padding(horizontal = 4.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+private fun ScoreRankBadge(rank: String) {
+    if (rank.isNotBlank()) {
+        Text(
+            rank,
+            color = ComposeColor.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .background(Ink, RoundedCornerShape(3.dp))
+                .border(1.dp, Ink, RoundedCornerShape(3.dp))
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+        )
+    }
+}
+
 @Composable
 private fun SongDetailScreen(
     song: IidxChart,
@@ -1455,6 +1597,7 @@ private fun SongDetailScreen(
     onBack: () -> Unit,
     onStyleToggle: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
+    onCopyText: (String) -> Unit,
 ) {
     val scoreByKey = remember(scores) { scores.associateBy { it.key } }
     Column(Modifier.fillMaxSize()) {
@@ -1492,14 +1635,14 @@ private fun SongDetailScreen(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp)
+                AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
                 Spacer(Modifier.height(3.dp))
-                AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
+                AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
                 if (song.subtitle.isNotBlank()) {
                     AutoScrollingText(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp)
+                AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(song.composer) })
             }
             Column(horizontalAlignment = Alignment.End) {
                 DetailStat("版本 ", song.version.ifBlank { "—" })
@@ -1535,43 +1678,54 @@ private fun DifficultyScoreCard(
     val accent = difficultyColor(chart.difficulty)
     val shape = RoundedCornerShape(10.dp)
     val available = chart.textageUrl != null
-    Row(
+    Column(
         Modifier.fillMaxWidth()
             .clip(shape)
             .background(if (available) accent.copy(alpha = .08f) else Background)
             .border(1.dp, accent.copy(alpha = if (available) .65f else .3f), shape)
             .clickable(enabled = available) { onOpenChart(chart) }
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "${difficultyName(chart.difficulty)} ${chart.level}",
-            color = accent,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(112.dp),
-        )
-        Text(
-            "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
-            color = NormalBlue,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f),
-        )
-        Column(horizontalAlignment = Alignment.End) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${difficultyName(chart.difficulty)} ${chart.level}",
+                color = accent,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.weight(1f))
             if (score == null) {
                 Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             } else {
-                Text(
-                    "${clearFlagShortName(score.clearFlag)} ${score.exScore}(${rankSummary(score.exScore, chart.notes)})",
-                    color = Ink,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
+                ClearBadge(
+                    text = clearFlagDetailName(score.clearFlag) +
+                        (score.missCount.takeIf { it >= 0 }?.let { " ($it BP)" } ?: ""),
+                    color = clearFlagColor(score.clearFlag),
                 )
-                if (score.missCount >= 0) {
-                    Text("MISS COUNT ${score.missCount}", color = Muted, fontSize = 9.sp)
-                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
+                color = NormalBlue,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            if (score != null) {
+                Text(score.exScore.toString(), color = NormalBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(4.dp))
+                Text("(", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                ScoreRankBadge(scoreRankName(score.exScore, chart.notes))
+                rankDeltaText(score.exScore, chart.notes)
+                    .takeIf { it.isNotBlank() }
+                    ?.let {
+                        Spacer(Modifier.width(4.dp))
+                        Text(it, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                Text(")", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1585,17 +1739,6 @@ private fun difficultyIndex(value: String): Int = when (value) {
     "L" -> 4
     else -> -1
 }.coerceAtLeast(0)
-
-private fun clearFlagShortName(value: Int): String = when (value) {
-    1 -> "FAILED"
-    2 -> "A-CLEAR"
-    3 -> "E-CLEAR"
-    4 -> "CLEAR"
-    5 -> "H-CLEAR"
-    6 -> "EX-HARD"
-    7 -> "FC"
-    else -> "NO PLAY"
-}
 
 private fun rankSummary(exScore: Int, noteCount: Int): String {
     if (noteCount <= 0) return "—"
@@ -1651,6 +1794,7 @@ private fun ChartDetailScreen(
     mode: String,
     onStyleToggle: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
+    onCopyText: (String) -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -1687,14 +1831,14 @@ private fun ChartDetailScreen(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp)
+                AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
                 Spacer(Modifier.height(3.dp))
-                AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
+                AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
                 if (chart.subtitle.isNotBlank()) {
                     AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp)
+                AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(chart.composer) })
             }
             Column(horizontalAlignment = Alignment.End) {
                 DetailStat("版本 ", chart.version.ifBlank { "—" })
@@ -2576,12 +2720,34 @@ internal fun dpDisplayLane(rawLane: Int, destinationKeyLane: Int): Int = when {
 }
 
 @Composable
+private fun CopyableText(
+    text: String,
+    color: ComposeColor,
+    fontSize: TextUnit,
+    maxLines: Int = 1,
+    overflow: TextOverflow = TextOverflow.Clip,
+    onCopy: (String) -> Unit,
+) {
+    Text(
+        text,
+        color = color,
+        fontSize = fontSize,
+        maxLines = maxLines,
+        overflow = overflow,
+        modifier = Modifier.pointerInput(text) {
+            detectTapGestures(onLongPress = { onCopy(text) })
+        },
+    )
+}
+
+@Composable
 private fun AutoScrollingText(
     text: String,
     color: ComposeColor,
     fontSize: TextUnit,
     lineHeight: TextUnit = TextUnit.Unspecified,
     fontWeight: FontWeight? = null,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val scrollState = rememberScrollState()
     LaunchedEffect(text, scrollState.maxValue) {
@@ -2605,6 +2771,15 @@ private fun AutoScrollingText(
     Row(
         Modifier
             .fillMaxWidth()
+            .then(
+                if (onLongPress == null) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(text) {
+                        detectTapGestures(onLongPress = { onLongPress() })
+                    }
+                },
+            )
             .horizontalScroll(scrollState, enabled = false),
     ) {
         Text(

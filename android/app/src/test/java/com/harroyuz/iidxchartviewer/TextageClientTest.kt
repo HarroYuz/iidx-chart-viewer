@@ -2,6 +2,7 @@ package com.harroyuz.iidxchartviewer
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,6 +52,8 @@ class TextageClientTest {
 
         assertEquals(chartSongKey(available), chartSongKey(unavailable))
         assertEquals("carapain", chartSongKey(unavailable))
+        assertEquals(songGroupKey(available), songGroupKey(unavailable))
+        assertNotEquals(songGroupKey(available), songGroupKey(available.copy(sourceLabel = "(CS8th)")))
     }
 
     @Test
