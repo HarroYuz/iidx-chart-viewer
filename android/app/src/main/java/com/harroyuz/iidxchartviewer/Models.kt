@@ -157,8 +157,12 @@ data class BjmMusic(
 }
 
 data class BjmIndex(
-    val chartMusicIds: Map<String, Int> = emptyMap(),
+    val songMusicIds: Map<String, Int> = emptyMap(),
     val scoresByKey: Map<String, BjmScore> = emptyMap(),
+    val textageRevision: Long = 0L,
+    val musicRevision: Long = 0L,
+    val scoresRevision: Long = 0L,
+    val built: Boolean = false,
 )
 
 data class BjmUser(

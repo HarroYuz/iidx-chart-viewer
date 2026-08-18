@@ -11,6 +11,7 @@ class IidxLocalStore(context: Context) {
         const val CHART_CACHE_VERSION = 7
         const val CATALOG_HEADER = "#iidx-catalog-v3"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 4
+        const val BJM_INDEX_VERSION = 1
     }
 
     private val preferences = context.getSharedPreferences("iidx-local-state", Context.MODE_PRIVATE)
@@ -84,6 +85,76 @@ class IidxLocalStore(context: Context) {
             .putString("bjm_user", user)
             .putLong("bjm_synced_at", state.bjmSyncedAt ?: 0L)
             .apply()
+    }
+
+    fun loadBjmIndex(): BjmIndex? = runCatching {
+        val json = JSONObject(preferences.getString("bjm_index", null) ?: return null)
+        if (json.optInt("version") != BJM_INDEX_VERSION) return null
+        val songMusicIds = buildMap {
+            val array = json.optJSONArray("song_music_ids") ?: JSONArray()
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                put(item.optString("song_key"), item.optInt("music_id"))
+            }
+        }
+        val scoresByKey = buildMap {
+            val array = json.optJSONArray("scores") ?: JSONArray()
+            for (index in 0 until array.length()) {
+                val score = array.getJSONObject(index).toScore()
+                put(score.key, score)
+            }
+        }
+        BjmIndex(
+            songMusicIds = songMusicIds,
+            scoresByKey = scoresByKey,
+            textageRevision = json.optLong("textage_revision"),
+            musicRevision = json.optLong("music_revision"),
+            scoresRevision = json.optLong("scores_revision"),
+            built = json.optBoolean("built"),
+        )
+    }.getOrNull()
+
+    fun saveBjmIndex(index: BjmIndex) {
+        val songMusicIds = JSONArray().apply {
+            index.songMusicIds.forEach { (songKey, musicId) ->
+                put(JSONObject().put("song_key", songKey).put("music_id", musicId))
+            }
+        }
+        val scores = JSONArray().apply {
+            index.scoresByKey.values.forEach { put(it.toJson()) }
+        }
+        preferences.edit()
+            .putString(
+                "bjm_index",
+                JSONObject()
+                    .put("version", BJM_INDEX_VERSION)
+                    .put("song_music_ids", songMusicIds)
+                    .put("scores", scores)
+                    .put("textage_revision", index.textageRevision)
+                    .put("music_revision", index.musicRevision)
+                    .put("scores_revision", index.scoresRevision)
+                    .put("built", index.built)
+                    .toString(),
+            )
+            .apply()
+    }
+
+    fun bjmMusicRevision(): Long = preferences.getLong(
+        "bjm_music_revision",
+        preferences.getLong("bjm_synced_at", 0L),
+    )
+
+    fun bjmScoresRevision(): Long = preferences.getLong(
+        "bjm_scores_revision",
+        preferences.getLong("bjm_synced_at", 0L),
+    )
+
+    fun setBjmMusicRevision(timestamp: Long = System.currentTimeMillis()) {
+        preferences.edit().putLong("bjm_music_revision", timestamp).apply()
+    }
+
+    fun setBjmScoresRevision(timestamp: Long = System.currentTimeMillis()) {
+        preferences.edit().putLong("bjm_scores_revision", timestamp).apply()
     }
 
     fun hasTextageCatalog(): Boolean = preferences.getBoolean("textage_catalog_present", false) && load().charts.isNotEmpty()
