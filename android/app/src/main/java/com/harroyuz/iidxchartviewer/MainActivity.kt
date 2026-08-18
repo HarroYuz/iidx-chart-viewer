@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -2365,9 +2366,12 @@ private fun ChartDetailScreen(
                 letterSpacing = .8.sp,
             )
             Spacer(Modifier.height(7.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Row(
+                Modifier.fillMaxWidth().height(34.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
                 Row(
-                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     siblingCharts.forEach { sibling ->
@@ -2378,6 +2382,7 @@ private fun ChartDetailScreen(
                 ChartScoreSummary(
                     score = scoreForChart(chart, bjmIndex),
                     noteCount = chartData?.chart?.notes ?: chart.notes,
+                    modifier = Modifier.height(34.dp),
                 )
             }
         }
@@ -2409,7 +2414,11 @@ private fun ChartScoreSummary(
     noteCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, horizontalAlignment = Alignment.End) {
+    Column(
+        modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.Bottom,
+    ) {
         if (score == null) {
             Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         } else {
