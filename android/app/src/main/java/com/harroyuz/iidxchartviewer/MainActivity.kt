@@ -789,7 +789,12 @@ private fun ChartBrowserScreen(
         }
         val songs = remember(filteredCharts) {
             filteredCharts.groupBy { chart ->
-                listOf(chart.title, chart.subtitle, chart.composer).joinToString("\u0000")
+                listOf(
+                    chartSongKey(chart),
+                    chart.title,
+                    chart.subtitle,
+                    chart.composer,
+                ).joinToString("\u0000")
             }.values.map { group ->
                 SongGroup(
                     key = group.first().id.substringBeforeLast('-'),
@@ -1113,6 +1118,14 @@ private fun FilterDropdown(
 
 private fun versionNumber(value: String): Int =
     Regex("\\d+").find(value)?.value?.toIntOrNull() ?: Int.MAX_VALUE
+
+private fun chartSongKey(chart: IidxChart): String =
+    chart.textageUrl
+        ?.substringBefore('?')
+        ?.substringAfterLast('/')
+        ?.substringBeforeLast('.')
+        ?.takeIf { it.isNotBlank() }
+        ?: chart.id.substringBeforeLast('-')
 
 private data class SongGroup(
     val key: String,
