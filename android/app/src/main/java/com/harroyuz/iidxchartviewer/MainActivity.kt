@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1209,7 +1210,16 @@ private fun ChartDetailScreen(
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) {
-                Text("‹ 返回", color = Purple, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "‹",
+                        color = Purple,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.offset(y = (-1).dp),
+                    )
+                    Text("返回", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text("Style：", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
