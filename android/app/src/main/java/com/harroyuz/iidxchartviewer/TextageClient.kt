@@ -466,7 +466,10 @@ internal object TextageParser {
         // to contain no chart at all.
         val baseSource = defaultDifficultyBody(modeBody, chart.mode)
         val activeSource = when (chart.difficulty) {
-            "A", "L" -> conditionalBody(modeBody, chart.difficulty.lowercase())
+            "A" -> conditionalBody(modeBody, "a")
+            // Textage uses `l` for NORMAL and `kuro` for the X/LEGENDARIA branch.
+            "N" -> conditionalBody(modeBody, "l")
+            "L" -> conditionalBody(modeBody, "kuro") ?: conditionalBody(modeBody, "l")
             "B" -> conditionalBody(modeBody, "g")
             else -> null
         } ?: baseSource

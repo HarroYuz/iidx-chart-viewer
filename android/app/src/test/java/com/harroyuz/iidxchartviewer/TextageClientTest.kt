@@ -208,6 +208,50 @@ class TextageClientTest {
     }
 
     @Test
+    fun selectsTextageNormalAndLegendariaBranches() {
+        val source = """
+            measure=1;
+            if(k){
+                sp[1]="01";
+                if(a){
+                    sp[1]="02";
+                    if(kuro){
+                        sp[1]="04";
+                    }
+                }
+                if(l){
+                    sp[1]="08";
+                }
+            }else{
+                dp[1]="01";
+            }
+        """.trimIndent()
+        val normal = IidxChart(
+            id = "textage-normal-branch",
+            title = "textage-normal-branch",
+            mode = "SP",
+            difficulty = "N",
+            level = 1,
+            notes = 1,
+            version = "test",
+            bpm = "160",
+        )
+        val legendaria = normal.copy(
+            id = "textage-legendaria-branch",
+            difficulty = "L",
+        )
+
+        assertEquals(listOf(3), TextageParser.parseChart(normal, source).notes.map { it.lane })
+        assertEquals(listOf(2), TextageParser.parseChart(legendaria, source).notes.map { it.lane })
+    }
+
+    @Test
+    fun labelsBelowNextGradeAsTheCurrentGrade() {
+        assertEquals("A - 6", rankSummary(150, 100))
+        assertEquals("AA - 8", rankSummary(170, 100))
+    }
+
+    @Test
     fun parsesTextageTempoChangesAndMeasureLengths() {
         val source = """
             genre="X"; title="X"; artist="Y"; bpm="40～165"; measure=5;

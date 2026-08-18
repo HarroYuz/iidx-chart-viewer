@@ -2090,7 +2090,7 @@ private fun difficultyIndex(value: String): Int = when (value) {
     else -> -1
 }.coerceAtLeast(0)
 
-private fun rankSummary(exScore: Int, noteCount: Int): String {
+internal fun rankSummary(exScore: Int, noteCount: Int): String {
     if (noteCount <= 0) return "—"
     val thresholds = (1..8).map { step -> kotlin.math.ceil(noteCount * 2.0 * step / 9.0).toInt() }
     val rankIndex = thresholds.indexOfLast { exScore >= it }
@@ -2102,7 +2102,9 @@ private fun rankSummary(exScore: Int, noteCount: Int): String {
     if (nextThreshold == null) return "AAA + $rankPlus"
     val nextMinus = nextThreshold - exScore
     return if (rankIndex < 0 || nextMinus < rankPlus) {
-        "${rankNames.getOrElse(nextIndex) { "AAA" }} - $nextMinus"
+        // A score below the next threshold is still the lower grade. Keep the
+        // negative distance, but do not label an A-range score as AA-/AAA-.
+        "${rankNames.getOrElse(rankIndex) { "F" }} - $nextMinus"
     } else {
         "${rankNames.getOrElse(rankIndex) { "F" }} + $rankPlus"
     }
