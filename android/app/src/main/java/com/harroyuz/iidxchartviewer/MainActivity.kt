@@ -1039,10 +1039,10 @@ private fun TextageBootstrapScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(if (error == null) "正在准备谱面库" else "谱面库获取失败", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(if (error == null) "正在加载谱面元数据" else "谱面元数据获取失败", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            if (error == null) "首次启动会从 Textage 获取全部谱面并保存到本机。" else error,
+            if (error == null) "首次启动会从 Textage 获取歌曲元数据并保存到本机。" else error,
             color = if (error == null) Muted else Orange,
             fontSize = 12.sp,
         )
