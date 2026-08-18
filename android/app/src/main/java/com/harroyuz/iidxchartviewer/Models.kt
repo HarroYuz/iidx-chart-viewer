@@ -40,15 +40,19 @@ data class TextageChartData(
     val measureLengths: List<Float> = emptyList(),
     val parserMessage: String? = null,
 ) {
-    private val effectiveBpmChanges: List<BpmChange>
-        get() = (if (bpmChanges.isEmpty()) listOf(BpmChange(0f, bpm)) else bpmChanges)
+    private val effectiveBpmChanges: List<BpmChange> by lazy {
+        (if (bpmChanges.isEmpty()) listOf(BpmChange(0f, bpm)) else bpmChanges)
             .sortedBy { it.beat }
+    }
 
-    fun bpmAt(beat: Float): Float = effectiveBpmChanges
-        .lastOrNull { it.beat <= beat + 0.0001f }
-        ?.bpm
-        ?.takeIf { it > 0f }
-        ?: bpm
+    fun bpmAt(beat: Float): Float {
+        val changes = effectiveBpmChanges
+        for (index in changes.lastIndex downTo 0) {
+            val change = changes[index]
+            if (change.beat <= beat + 0.0001f) return change.bpm.takeIf { it > 0f } ?: bpm
+        }
+        return bpm
+    }
 
     fun secondsAtBeat(beat: Float): Float {
         val target = beat.coerceAtLeast(0f)
@@ -56,8 +60,12 @@ data class TextageChartData(
         var elapsed = 0f
         var segmentStart = 0f
         var segmentBpm = changes.firstOrNull()?.bpm?.takeIf { it > 0f } ?: bpm
-        changes.dropWhile { it.beat <= 0f }.forEach { change ->
-            if (change.beat >= target) return@forEach
+        for (change in changes) {
+            if (change.beat <= 0f) {
+                segmentBpm = change.bpm.coerceAtLeast(1f)
+                continue
+            }
+            if (change.beat >= target) break
             elapsed += (change.beat - segmentStart).coerceAtLeast(0f) * 60f / segmentBpm.coerceAtLeast(1f)
             segmentStart = change.beat
             segmentBpm = change.bpm.coerceAtLeast(1f)
@@ -70,7 +78,11 @@ data class TextageChartData(
         var remaining = seconds.coerceAtLeast(0f)
         var beat = 0f
         var segmentBpm = effectiveBpmChanges.firstOrNull()?.bpm?.takeIf { it > 0f } ?: bpm
-        effectiveBpmChanges.dropWhile { it.beat <= 0f }.forEach { change ->
+        for (change in effectiveBpmChanges) {
+            if (change.beat <= 0f) {
+                segmentBpm = change.bpm.coerceAtLeast(1f)
+                continue
+            }
             val segmentBeats = (change.beat - beat).coerceAtLeast(0f)
             val segmentSeconds = segmentBeats * 60f / segmentBpm.coerceAtLeast(1f)
             if (remaining <= segmentSeconds) return beat + remaining * segmentBpm / 60f

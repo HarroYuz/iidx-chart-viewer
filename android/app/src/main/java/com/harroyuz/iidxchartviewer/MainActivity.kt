@@ -62,6 +62,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -1245,7 +1246,9 @@ private fun ChartDetailScreen(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    Text(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, maxLines = 1, softWrap = false)
+                }
                 Spacer(Modifier.height(3.dp))
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
                     Text(chart.title, color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
@@ -1256,7 +1259,9 @@ private fun ChartDetailScreen(
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    Text(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
                 DetailStat("版本 ", chart.version.ifBlank { "—" })
@@ -1710,12 +1715,15 @@ private fun ChartPlayer(
 
     LaunchedEffect(data.chart.id, playing) {
         if (!playing) return@LaunchedEffect
-        var last = System.nanoTime()
+        var lastFrameNanos = 0L
         while (isActive) {
-            delay(16L)
-            val now = System.nanoTime()
-            val seconds = (now - last) / 1_000_000_000f
-            last = now
+            val frameNanos = withFrameNanos { it }
+            if (lastFrameNanos == 0L) {
+                lastFrameNanos = frameNanos
+                continue
+            }
+            val seconds = ((frameNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, .25f)
+            lastFrameNanos = frameNanos
             currentBeat = data.beatAtSeconds(data.secondsAtBeat(currentBeat) + seconds)
             if (currentBeat >= duration) {
                 currentBeat = duration
@@ -2103,14 +2111,6 @@ private fun ChartCanvas(
                         color = noteColor.copy(alpha = .58f),
                         topLeft = Offset(left + (width - holdWidth) / 2f, holdTop),
                         size = Size(holdWidth, holdHeight),
-                    )
-                }
-                if (endY in 0f..size.height) {
-                    drawRoundRect(
-                        color = noteColor,
-                        topLeft = Offset(left, endY - 6f),
-                        size = Size(width, 12f),
-                        cornerRadius = CornerRadius(5f),
                     )
                 }
             }
