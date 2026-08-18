@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -367,9 +368,19 @@ class MainActivity : ComponentActivity() {
         textageProgress = TextageSyncProgress(initial, 0, 0, "正在获取全部歌曲元数据…")
         lifecycleScope.launch {
             try {
+                var lastProgressPublishedAt = 0L
+                var lastProgressCompleted = 0
                 val imported = textageClient.fetchCatalog { completed, total, title ->
-                    withContext(Dispatchers.Main) {
-                        textageProgress = TextageSyncProgress(initial, completed, total, title)
+                    val now = SystemClock.uptimeMillis()
+                    val publish = completed == total ||
+                        now - lastProgressPublishedAt >= 120L ||
+                        completed - lastProgressCompleted >= 32
+                    if (publish) {
+                        lastProgressPublishedAt = now
+                        lastProgressCompleted = completed
+                        withContext(Dispatchers.Main.immediate) {
+                            textageProgress = TextageSyncProgress(initial, completed, total, title)
+                        }
                     }
                 }
                 if (imported.isEmpty()) throw TextageException("Textage 没有返回可识别的谱面目录")
@@ -633,54 +644,6 @@ private fun ChartBrowserScreen(
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
-    val versionOrder = state.charts
-        .asSequence()
-        .filter { it.mode == mode && it.version.isNotBlank() }
-        .mapNotNull { chart ->
-            val index = chart.textageUrl
-                ?.let { Regex("/score/(\\d+)/").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
-            index?.let { chart.version to it }
-        }
-        .toMap()
-    val versionOptions = state.charts
-        .asSequence()
-        .filter { it.mode == mode && it.version.isNotBlank() }
-        .map { it.version }
-        .distinct()
-        .sortedWith(compareBy<String>({ versionOrder[it] ?: versionNumber(it) }, { it.lowercase(Locale.US) }))
-        .toList()
-    val levelOptions = state.charts
-        .asSequence()
-        .filter { it.mode == mode && it.level > 0 }
-        .map { it.level }
-        .distinct()
-        .sorted()
-        .toList()
-    val filteredCharts = state.charts.filter {
-        it.mode == mode &&
-            (query.isBlank() || "${it.title} ${it.subtitle} ${it.genre} ${it.composer}".contains(query, ignoreCase = true)) &&
-            (selectedVersion == null || it.version == selectedVersion) &&
-            (selectedLevel == null || it.level == selectedLevel)
-    }
-    val songs = remember(filteredCharts) {
-        filteredCharts.groupBy { chart ->
-            listOf(chart.title, chart.subtitle, chart.composer).joinToString("\u0000")
-        }.values.map { group ->
-            SongGroup(
-                key = group.first().id.substringBeforeLast('-'),
-                title = group.first().title,
-                subtitle = group.first().subtitle,
-                genre = group.first().genre,
-                composer = group.first().composer,
-                version = group.first().version,
-                charts = group.groupBy { it.difficulty }.values.map { sameDifficulty ->
-                    sameDifficulty.maxWithOrNull(
-                        compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
-                    ) ?: sameDifficulty.first()
-                }.sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level }),
-            )
-        }
-    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     fun closeDrawer() {
@@ -787,6 +750,62 @@ private fun ChartBrowserScreen(
                 onClearChartCache = onClearChartCache,
             )
         } else {
+        val versionOrder = remember(state.charts, mode) {
+            state.charts
+                .asSequence()
+                .filter { it.mode == mode && it.version.isNotBlank() }
+                .mapNotNull { chart ->
+                    val index = chart.textageUrl
+                        ?.let { Regex("/score/(\\d+)/").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
+                    index?.let { chart.version to it }
+                }
+                .toMap()
+        }
+        val versionOptions = remember(state.charts, mode, versionOrder) {
+            state.charts
+                .asSequence()
+                .filter { it.mode == mode && it.version.isNotBlank() }
+                .map { it.version }
+                .distinct()
+                .sortedWith(compareBy<String>({ versionOrder[it] ?: versionNumber(it) }, { it.lowercase(Locale.US) }))
+                .toList()
+        }
+        val levelOptions = remember(state.charts, mode) {
+            state.charts
+                .asSequence()
+                .filter { it.mode == mode && it.level > 0 }
+                .map { it.level }
+                .distinct()
+                .sorted()
+                .toList()
+        }
+        val filteredCharts = remember(state.charts, mode, query, selectedVersion, selectedLevel) {
+            state.charts.filter {
+                it.mode == mode &&
+                    (query.isBlank() || "${it.title} ${it.subtitle} ${it.genre} ${it.composer}".contains(query, ignoreCase = true)) &&
+                    (selectedVersion == null || it.version == selectedVersion) &&
+                    (selectedLevel == null || it.level == selectedLevel)
+            }
+        }
+        val songs = remember(filteredCharts) {
+            filteredCharts.groupBy { chart ->
+                listOf(chart.title, chart.subtitle, chart.composer).joinToString("\u0000")
+            }.values.map { group ->
+                SongGroup(
+                    key = group.first().id.substringBeforeLast('-'),
+                    title = group.first().title,
+                    subtitle = group.first().subtitle,
+                    genre = group.first().genre,
+                    composer = group.first().composer,
+                    version = group.first().version,
+                    charts = group.groupBy { it.difficulty }.values.map { sameDifficulty ->
+                        sameDifficulty.maxWithOrNull(
+                            compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                        ) ?: sameDifficulty.first()
+                    }.sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level }),
+                )
+            }
+        }
         Column(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
