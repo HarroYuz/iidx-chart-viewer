@@ -40,6 +40,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
@@ -129,6 +130,13 @@ private val Cyan = ComposeColor(0xFF198D9B)
 private val Orange = ComposeColor(0xFFE16035)
 private val Green = ComposeColor(0xFF1B9B62)
 private val NormalBlue = ComposeColor(0xFF3179D6)
+private val ClearFailed = ComposeColor(0xFF777777)
+private val ClearAssist = ComposeColor(0xFF7A4DB8)
+private val ClearEasy = ComposeColor(0xFF3E9C57)
+private val ClearNormal = ComposeColor(0xFF2B8FC7)
+private val ClearHard = ComposeColor(0xFFD52F32)
+private val ClearExHard = ComposeColor(0xFFC58A00)
+private val ClearFullCombo = ComposeColor(0xFF159EAF)
 private val PlayerBackground = ComposeColor(0xFF08090F)
 private val PlayerLane = ComposeColor(0xFF252735)
 private val PlayerCenterGap = ComposeColor(0xFF3A3D49)
@@ -157,6 +165,9 @@ class MainActivity : ComponentActivity() {
     private var appState by mutableStateOf(IidxAppState())
     private var bjmIndex by mutableStateOf(BjmIndex())
     private var localCatalogPresent by mutableStateOf(false)
+    private var localDataLoading by mutableStateOf(true)
+    private var localDataProgress by mutableStateOf(0f)
+    private var localDataStage by mutableStateOf("正在准备本地数据")
     private var syncTarget by mutableStateOf<DataSyncTarget?>(null)
     private var syncStage by mutableStateOf<String?>(null)
     private var textageSyncing by mutableStateOf(false)
@@ -223,6 +234,9 @@ class MainActivity : ComponentActivity() {
                     playerSettings = playerSettings,
                     message = message,
                     localCatalogPresent = localCatalogPresent,
+                    localDataLoading = localDataLoading,
+                    localDataProgress = localDataProgress,
+                    localDataStage = localDataStage,
                     autoUpdateEnabled = autoUpdateEnabled,
                     updateChecking = updateChecking,
                     updateInfo = updateInfo,
@@ -260,35 +274,65 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        // Loading a large local catalog is also kept off the main thread.
+        // Loading a large local catalog and its persisted index is kept off
+        // the main thread. The progress screen prevents an empty list from
+        // being mistaken for a failed load.
         lifecycleScope.launch(Dispatchers.IO) {
-            val loaded = store.load()
-            val loadedBjmIndex = store.loadBjmIndex() ?: BjmIndex()
-            withContext(Dispatchers.Main) {
-                appState = loaded
-                bjmIndex = loadedBjmIndex
-                lifecycleScope.launch(Dispatchers.Default) {
-                    val refreshedIndex = refreshCachedBjmIndex(loaded, loadedBjmIndex, store)
-                    withContext(Dispatchers.Main) {
-                        if (
-                            appState.charts === loaded.charts &&
-                            appState.bjmMusic === loaded.bjmMusic &&
-                            appState.bjmScores === loaded.bjmScores
-                        ) {
-                            bjmIndex = refreshedIndex
-                            withContext(Dispatchers.IO) { store.saveBjmIndex(refreshedIndex) }
-                        }
+            try {
+                withContext(Dispatchers.Main) {
+                    localDataProgress = .08f
+                    localDataStage = "正在读取本地曲目"
+                }
+                val loaded = store.load()
+                withContext(Dispatchers.Main) {
+                    appState = loaded
+                    localDataProgress = .45f
+                    localDataStage = "正在读取用户成绩索引"
+                }
+                val loadedBjmIndex = store.loadBjmIndex() ?: BjmIndex()
+                withContext(Dispatchers.Main) {
+                    bjmIndex = loadedBjmIndex
+                    localDataProgress = .72f
+                    localDataStage = "正在校验索引"
+                }
+                val refreshedIndex = try {
+                    withContext(Dispatchers.Default) {
+                        refreshCachedBjmIndex(loaded, loadedBjmIndex, store)
                     }
+                } catch (error: Exception) {
+                    withContext(Dispatchers.Main) {
+                        message = "本地成绩索引校验失败，已使用缓存数据"
+                    }
+                    loadedBjmIndex
                 }
-                // Bootstrap only when there is no usable local catalog. A
-                // completed catalog should open immediately; the update
-                // button performs the next metadata refresh on demand.
-                val needsBootstrap = loaded.charts.isEmpty() || !store.isTextageSyncComplete()
-                val dailySyncDue = System.currentTimeMillis() - store.fullSyncLastAt() >= TEXTAGE_SYNC_INTERVAL_MS
-                if (needsBootstrap || dailySyncDue) {
-                    syncAllData()
+                withContext(Dispatchers.Main) {
+                    if (
+                        appState.charts === loaded.charts &&
+                        appState.bjmMusic === loaded.bjmMusic &&
+                        appState.bjmScores === loaded.bjmScores
+                    ) {
+                        bjmIndex = refreshedIndex
+                        withContext(Dispatchers.IO) { store.saveBjmIndex(refreshedIndex) }
+                    }
+                    localDataProgress = 1f
+                    localDataStage = "本地数据加载完成"
+                    localDataLoading = false
+                    // Bootstrap only when there is no usable local catalog. A
+                    // completed catalog should open immediately; the update
+                    // button performs the next metadata refresh on demand.
+                    val needsBootstrap = loaded.charts.isEmpty() || !store.isTextageSyncComplete()
+                    val dailySyncDue = System.currentTimeMillis() - store.fullSyncLastAt() >= TEXTAGE_SYNC_INTERVAL_MS
+                    if (needsBootstrap || dailySyncDue) {
+                        syncAllData()
+                    }
+                    checkForUpdatesIfDue()
                 }
-                checkForUpdatesIfDue()
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    localDataLoading = false
+                    localDataStage = "本地数据加载失败"
+                    message = error.message ?: "本地数据加载失败"
+                }
             }
         }
     }
@@ -695,6 +739,9 @@ private fun IidxApp(
     message: String?,
     onDismissMessage: () -> Unit,
     autoUpdateEnabled: Boolean,
+    localDataLoading: Boolean,
+    localDataProgress: Float,
+    localDataStage: String,
     updateChecking: Boolean,
     updateInfo: GithubReleaseInfo?,
     updateDownloadProgress: Float?,
@@ -730,7 +777,12 @@ private fun IidxApp(
             var browserMode by rememberSaveable { mutableStateOf("SP") }
             val chartsBySongKey = remember(state.charts) { state.charts.groupBy(::songGroupKey) }
             val showingBootstrap = !localCatalogPresent && (state.charts.isEmpty() || textageProgress?.initial == true)
-            if (showingBootstrap) {
+            if (localDataLoading) {
+                LocalDataLoadingScreen(
+                    progress = localDataProgress,
+                    stage = localDataStage,
+                )
+            } else if (showingBootstrap) {
                 TextageBootstrapScreen(
                     progress = textageProgress,
                     error = textageError,
@@ -1528,6 +1580,31 @@ private fun difficultyOrder(value: String): Int = when (value) {
 }
 
 @Composable
+private fun LocalDataLoadingScreen(
+    progress: Float,
+    stage: String,
+) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 30.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("正在加载本地数据", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
+        Text(stage, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(20.dp))
+        LinearProgressIndicator(
+            progress = { progress.coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth(),
+            color = Purple,
+            trackColor = Panel,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("${(progress.coerceIn(0f, 1f) * 100).toInt()}%", color = NormalBlue, fontSize = 12.sp)
+    }
+}
+
+@Composable
 private fun TextageBootstrapScreen(
     progress: TextageSyncProgress?,
     error: String?,
@@ -1658,11 +1735,11 @@ private fun SongGroupRow(
             }
         }
         Spacer(Modifier.height(7.dp))
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        LazyRow(
+            Modifier.fillMaxWidth().height(47.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            song.charts.forEach { chart ->
+            items(song.charts, key = { it.id }) { chart ->
                 DifficultyChip(
                     chart = chart,
                     onOpenChart = onOpenChart,
@@ -1683,56 +1760,57 @@ private fun DifficultyChip(
     val accent = difficultyColor(chart.difficulty)
     val shape = RoundedCornerShape(14.dp)
     val available = chart.textageUrl != null
-    Box(
-        Modifier.size(width = 42.dp, height = 34.dp)
-            .clip(shape)
-            .background(if (available) accent.copy(alpha = .13f) else Background)
-            .then(
-                if (available) {
-                    Modifier.border(
-                        if (selected) 2.dp else 1.dp,
-                        accent.copy(alpha = if (selected) .95f else .55f),
-                        shape,
-                    )
-                } else {
-                    Modifier.drawBehind {
-                        drawRoundRect(
-                            color = Muted.copy(alpha = .7f),
-                            style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 4.dp.toPx()))),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
-                        )
-                    }
-                },
-            )
-            .clickable(enabled = available) { onOpenChart(chart) }
-            .padding(horizontal = 5.dp),
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier = Modifier.width(42.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (score == null) {
+        Box(
+            Modifier.size(width = 42.dp, height = 34.dp)
+                .clip(shape)
+                .background(if (available) accent.copy(alpha = .13f) else Background)
+                .then(
+                    if (available) {
+                        Modifier.border(
+                            if (selected) 2.dp else 1.dp,
+                            accent.copy(alpha = if (selected) .95f else .55f),
+                            shape,
+                        )
+                    } else {
+                        Modifier.drawBehind {
+                            drawRoundRect(
+                                color = Muted.copy(alpha = .7f),
+                                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 4.dp.toPx()))),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
+                            )
+                        }
+                    },
+                )
+                .clickable(enabled = available) { onOpenChart(chart) }
+                .padding(horizontal = 5.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(if (chart.level > 0) chart.level.toString() else "—", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        } else {
-            Column(
-                Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween,
+        }
+        if (score != null) {
+            Row(
+                Modifier.fillMaxWidth().height(11.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(if (chart.level > 0) chart.level.toString() else "—", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        clearFlagShortName(score.clearFlag),
-                        color = clearFlagColor(score.clearFlag),
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
-                    Text(
-                        scoreRankName(score.exScore, chart.notes),
-                        color = Ink,
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
-                }
+                Text(
+                    clearFlagShortName(score.clearFlag),
+                    color = clearFlagColor(score.clearFlag),
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    scoreRankName(score.exScore, chart.notes),
+                    color = Ink,
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -1765,23 +1843,23 @@ private fun clearFlagShortName(value: Int): String = when (value) {
 
 private fun clearFlagDetailName(value: Int): String = when (value) {
     1 -> "FAILED"
-    2 -> "AC-CLEAR"
-    3 -> "EC-CLEAR"
-    4 -> "NC-CLEAR"
-    5 -> "HC-CLEAR"
+    2 -> "A-CLEAR"
+    3 -> "E-CLEAR"
+    4 -> "CLEAR"
+    5 -> "H-CLEAR"
     6 -> "EXH-CLEAR"
-    7 -> "FULL COMBO"
+    7 -> "FULL-COMBO"
     else -> "NO PLAY"
 }
 
 private fun clearFlagColor(value: Int): ComposeColor = when (value) {
-    1 -> ComposeColor(0xFFE05252)
-    2 -> ComposeColor(0xFFE59B3C)
-    3 -> ComposeColor(0xFF4AAE68)
-    4 -> Cyan
-    5 -> NormalBlue
-    6 -> Purple
-    7 -> ComposeColor(0xFFB68A00)
+    1 -> ClearFailed
+    2 -> ClearAssist
+    3 -> ClearEasy
+    4 -> ClearNormal
+    5 -> ClearHard
+    6 -> ClearExHard
+    7 -> ClearFullCombo
     else -> Muted
 }
 
