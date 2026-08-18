@@ -16,6 +16,6 @@
 ./gradlew -p android :app:assembleDebug
 ```
 
-请在仓库根目录执行上面的命令。仓库已包含 Gradle Wrapper；如果 Gradle 和依赖已经缓存，也可以加上 `--offline` 参数。
+请在仓库根目录执行上面的命令。仓库已包含 Gradle Wrapper，联网时会自动获取所需的 Gradle 版本和构建依赖。
 
 输出：`android/app/build/outputs/apk/debug/app-debug.apk`

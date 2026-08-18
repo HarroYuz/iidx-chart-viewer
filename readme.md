@@ -20,11 +20,7 @@
 ./gradlew -p android :app:testDebugUnitTest :app:assembleDebug
 ```
 
-仓库已包含 Gradle Wrapper，不需要另外安装 Gradle。若本机已经缓存了所需依赖，也可以使用 `--offline`：
-
-```bash
-./gradlew --offline -p android :app:testDebugUnitTest :app:assembleDebug
-```
+仓库已包含 Gradle Wrapper。请在仓库根目录直接执行上面的命令；联网时 Wrapper 会自动获取所需的 Gradle 版本和构建依赖。
 
 Debug APK 输出在：
 
