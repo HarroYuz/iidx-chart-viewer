@@ -1808,7 +1808,8 @@ private fun ChartCanvas(
     // Keep note geometry in musical beat coordinates. BPM changes are applied
     // by playback timing, which changes the visible scroll speed without
     // stretching the chart a second time and creating gaps between measures.
-    val pixelsPerBeat = 16f * speed
+    // Hi-Speed 1 is four times the old visual baseline.
+    val pixelsPerBeat = 16f * speed * 4f
     val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
     val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
@@ -1953,14 +1954,20 @@ private fun ChartCanvas(
             val logicalLane = if (isSp && rawLane > 0) {
                 mappedKeyLane(rawLane, if (side == "1P") randomMapping1P else randomMapping2P)
             } else rawLane
+            val destinationKeyLane = when {
+                isSp && rawLane > 0 -> logicalLane
+                !isSp && rawLane in 1..7 -> mappedKeyLane(rawLane, randomMapping1P)
+                !isSp && rawLane >= 9 -> mappedKeyLane(rawLane - 8, randomMapping2P)
+                else -> 0
+            }
             val displayLane = when {
                 isSp && side == "2P" -> if (logicalLane == 0) 7 else logicalLane - 1
                 !isSp && rawLane >= 8 -> if (rawLane == 8) {
                     15
                 } else {
-                    15 - mappedKeyLane(rawLane - 8, randomMapping2P)
+                    15 - destinationKeyLane
                 }
-                !isSp && rawLane in 1..7 -> mappedKeyLane(rawLane, randomMapping1P)
+                !isSp && rawLane in 1..7 -> destinationKeyLane
                 else -> logicalLane
             }
             val laneIndex = displayLane.coerceIn(0, laneCount - 1)
@@ -1972,15 +1979,14 @@ private fun ChartCanvas(
             }
             val left = laneStart + laneWidth * .12f
             val width = laneWidth * .76f
-            val sideLane = if (isSp) sourceLane.mod(8) else if (sourceLane >= 8) sourceLane - 8 else sourceLane
-            val noteColor = if (!isSp) when (sideLane) {
-                0 -> PlayerRed
-                1, 3, 5, 7 -> ComposeColor.White
-                else -> PlayerSkyBlue
-            } else when {
-                rawLane == 0 -> PlayerRed
-                rawLane % 2 == 1 -> ComposeColor.White
-                else -> PlayerSkyBlue
+            // Colors follow the mapped physical key. For example, source
+            // lane 6 moved to lane 7 becomes white after RANDOM.
+            val noteColor = if (destinationKeyLane == 0) {
+                PlayerRed
+            } else if (destinationKeyLane % 2 == 1) {
+                ComposeColor.White
+            } else {
+                PlayerSkyBlue
             }
             if (note.holdBeats > 0f) {
                 val holdTop = minOf(y, endY).coerceIn(0f, size.height)

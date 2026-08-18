@@ -136,14 +136,22 @@ class IidxLocalStore(context: Context) {
     }
 
     private fun loadPlayerSpeed(): Int {
-        val migrated = if (preferences.getBoolean("player_speed_v2", false)) {
-            preferences.getInt("player_speed", 4)
+        val migrated = if (preferences.getInt("player_speed_scale_version", 0) >= 2) {
+            preferences.getInt("player_speed", 1)
         } else {
             val oldSpeed = preferences.getInt("player_speed", 4)
-            val nextSpeed = if (preferences.contains("player_speed")) oldSpeed * 4 else 4
+            // The new control stores a compact value: 1 means the old 4x
+            // visual speed. Normalize both the original storage and the
+            // intermediate 0.2.0 migration back to that representation.
+            val nextSpeed = if (preferences.contains("player_speed")) {
+                (oldSpeed + 3) / 4
+            } else {
+                1
+            }
             preferences.edit()
                 .putInt("player_speed", nextSpeed.coerceIn(1, 100))
-                .putBoolean("player_speed_v2", true)
+                .putInt("player_speed_scale_version", 2)
+                .remove("player_speed_v2")
                 .apply()
             nextSpeed
         }
@@ -162,7 +170,7 @@ class IidxLocalStore(context: Context) {
             .putString("player_option_1p", settings.safePlayOption1P)
             .putString("player_option_2p", settings.safePlayOption2P)
             .putBoolean("player_mirror", settings.safePlayOption == "MIRROR")
-            .putBoolean("player_speed_v2", true)
+            .putInt("player_speed_scale_version", 2)
             .putString("player_random_1p", settings.safeRandomMapping1P.joinToString(","))
             .putString("player_random_2p", settings.safeRandomMapping2P.joinToString(","))
             .apply()
