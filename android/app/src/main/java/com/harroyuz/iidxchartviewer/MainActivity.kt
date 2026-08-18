@@ -1214,7 +1214,7 @@ private fun ChartDetailScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(
                 onClick = onBack,
-                modifier = Modifier.size(width = 64.dp, height = 32.dp),
+                modifier = Modifier.size(width = 58.dp, height = 30.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
             ) {
                 Row(
@@ -1223,7 +1223,7 @@ private fun ChartDetailScreen(
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     Box(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -1236,7 +1236,7 @@ private fun ChartDetailScreen(
                         )
                     }
                     Box(
-                        modifier = Modifier.size(width = 36.dp, height = 22.dp),
+                        modifier = Modifier.size(width = 34.dp, height = 22.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text("返回", color = Purple, fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
