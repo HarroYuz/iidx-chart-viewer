@@ -251,4 +251,46 @@ class TextageClientTest {
 
         assertTrue(parsed.notes.any { it.lane == 0 && it.beat == 112f })
     }
+
+    @Test
+    fun decodesFascinationMaxxDpPatternUsedByBothMeasures() {
+        val source = """
+            measure=39;
+            if(k){
+                sp[1]="";
+            }else{
+                dp[37]="#p3P7xpppppppp";
+                dp[39]="#p3P7xpppppppp";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "fas-maxx-dp-a",
+            title = "Fascination MAXX",
+            mode = "DP",
+            difficulty = "A",
+            level = 12,
+            notes = 1313,
+            version = "14",
+            bpm = "100~400",
+        )
+        val parsed = TextageParser.parseChart(chart, source)
+
+        val expectedLanes = listOf(15, 13, 11, 9).let { lanes ->
+            List(8) { lanes }.flatten()
+        }
+        listOf(37, 39).forEach { measure ->
+            val start = parsed.measureStart(measure)
+            val end = parsed.measureEnd(measure)
+            val notes = parsed.notes.filter { it.beat >= start && it.beat < end }
+            assertEquals(expectedLanes.size, notes.size)
+            assertEquals(expectedLanes, notes.map { it.lane })
+        }
+    }
+
+    @Test
+    fun keepsDp2pKeysInSourceOrderBeforeRendering() {
+        assertEquals(8, dpDisplayLane(rawLane = 9, destinationKeyLane = 1))
+        assertEquals(14, dpDisplayLane(rawLane = 15, destinationKeyLane = 7))
+        assertEquals(15, dpDisplayLane(rawLane = 8, destinationKeyLane = 0))
+    }
 }

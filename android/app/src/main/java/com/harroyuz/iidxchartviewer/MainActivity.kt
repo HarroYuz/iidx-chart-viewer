@@ -2065,11 +2065,7 @@ private fun ChartCanvas(
             }
             val displayLane = when {
                 isSp && side == "2P" -> if (logicalLane == 0) 7 else logicalLane - 1
-                !isSp && rawLane >= 8 -> if (rawLane == 8) {
-                    15
-                } else {
-                    15 - destinationKeyLane
-                }
+                !isSp && rawLane >= 8 -> dpDisplayLane(rawLane, destinationKeyLane)
                 !isSp && rawLane in 1..7 -> destinationKeyLane
                 else -> logicalLane
             }
@@ -2127,6 +2123,17 @@ private fun ChartCanvas(
             }
         }
     }
+}
+
+/**
+ * DP's 2P side is laid out as keys 1..7 from left to right, with the scratch
+ * column on the far right. The source lane numbering already follows that
+ * order, so it must not be mirrored when converting it to a display column.
+ */
+internal fun dpDisplayLane(rawLane: Int, destinationKeyLane: Int): Int = when {
+    rawLane == 8 -> 15
+    rawLane in 9..15 -> 8 + destinationKeyLane - 1
+    else -> rawLane
 }
 
 @Composable
