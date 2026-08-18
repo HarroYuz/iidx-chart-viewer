@@ -6,7 +6,6 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -209,7 +208,7 @@ class MainActivity : ComponentActivity() {
                     updateInstalling = updateInstalling,
                     onDismissMessage = { message = null },
                     onLogin = {
-                        Toast.makeText(this@MainActivity, "BJM接入能力开发中", Toast.LENGTH_SHORT).show()
+                        message = "BJM接入能力开发中"
                     },
                     onOpenBjmProfile = {},
                     onSyncBjm = ::syncBjm,
@@ -442,7 +441,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         exitToastShown = true
-        Toast.makeText(this, "再返回一次以退出", Toast.LENGTH_SHORT).show()
+        message = "再返回一次以退出"
         lifecycleScope.launch {
             delay(2_200L)
             exitToastShown = false
@@ -685,6 +684,7 @@ private fun ChartBrowserScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = !showingDetail,
         drawerContent = {
             ModalDrawerSheet(
                 modifier = Modifier.width(180.dp),
@@ -1208,8 +1208,10 @@ private fun ChartDetailScreen(
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ 返回", color = Purple) }
-            Text("谱面浏览", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onBack) {
+                Text("‹ 返回", color = Purple, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+            Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text("Style：", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(4.dp))
             OutlinedButton(
@@ -1342,7 +1344,16 @@ private fun PlayerConfigBox(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(if (expanded) "播放器配置" else summary, color = if (expanded) Ink else Muted, fontSize = 11.sp)
-            Text(if (expanded) "▼" else "▲", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            if (expanded) {
+                Text("▼", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(4.dp))
+                Text("收起", color = Muted, fontSize = 10.sp)
+            } else {
+                Text("设置", color = Muted, fontSize = 10.sp)
+                Spacer(Modifier.width(4.dp))
+                Text("▲", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
         if (expanded) {
             Row(
@@ -1853,11 +1864,14 @@ private fun ChartCanvas(
     ) {
         val isSp = data.chart.mode != "DP"
         val dpGapUnits = 1.5f
+        // SP has a gray information column opposite the scratch column. It
+        // uses the same 1.5-note width as the DP center gap.
         val laneWidths = if (isSp) {
-            if (side == "2P") List(7) { 1f } + listOf(1.5f) else listOf(1.5f) + List(7) { 1f }
+            listOf(1.5f) + List(7) { 1f } + listOf(1.5f)
         } else listOf(1.5f) + List(7) { 1f } + List(7) { 1f } + listOf(1.5f)
         val unit = if (isSp) size.width / laneWidths.sum() else size.width / (laneWidths.sum() + dpGapUnits)
         val laneLefts = laneWidths.runningFold(0f) { sum, width -> sum + width * unit }.dropLast(1)
+        val spLaneOffset = if (isSp && side == "2P") 1 else 0
         val dpLeftWidth = laneWidths.take(8).sum()
         fun dpLaneStart(lane: Int): Float = if (lane < 8) {
             laneWidths.take(lane).sum() * unit
@@ -1872,21 +1886,40 @@ private fun ChartCanvas(
         val judgeY = size.height * .92f
 
         drawRect(PlayerBackground)
-        if (!isSp) {
+        if (isSp) {
+            val grayStart = if (side == "1P") laneWidths.take(8).sum() * unit else 0f
+            drawRect(
+                color = PlayerCenterGap,
+                topLeft = Offset(grayStart, 0f),
+                size = Size(1.5f * unit, size.height),
+            )
+        } else {
             drawRect(
                 color = PlayerCenterGap,
                 topLeft = Offset(dpLeftWidth * unit, 0f),
                 size = Size(dpGapUnits * unit, size.height),
             )
         }
-        for (lane in 0..laneCount) {
-            val x = if (isSp) laneLefts.getOrNull(lane) ?: size.width else dpBoundaryX(lane)
-            drawLine(
-                color = if (lane == 0 || lane == laneCount) PlayerEdge else PlayerLane,
-                start = Offset(x, 0f),
-                end = Offset(x, size.height),
-                strokeWidth = if (lane == 0 || lane == laneCount) 2f else 1f,
-            )
+        if (isSp) {
+            for (boundary in 0..laneWidths.size) {
+                val x = laneLefts.getOrNull(boundary) ?: size.width
+                drawLine(
+                    color = if (boundary == 0 || boundary == laneWidths.size) PlayerEdge else PlayerLane,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = if (boundary == 0 || boundary == laneWidths.size) 2f else 1f,
+                )
+            }
+        } else {
+            for (lane in 0..laneCount) {
+                val x = dpBoundaryX(lane)
+                drawLine(
+                    color = if (lane == 0 || lane == laneCount) PlayerEdge else PlayerLane,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = if (lane == 0 || lane == laneCount) 2f else 1f,
+                )
+            }
         }
         if (!isSp) {
             drawLine(
@@ -1895,6 +1928,11 @@ private fun ChartCanvas(
                 end = Offset((dpLeftWidth + dpGapUnits) * unit, size.height),
                 strokeWidth = 2f,
             )
+        }
+        val infoCenterX = if (isSp) {
+            (if (side == "1P") laneWidths.take(8).sum() + .75f else .75f) * unit
+        } else {
+            (dpLeftWidth + dpGapUnits / 2f) * unit
         }
         if (showBarLines || showMeasureNumbers) {
             val firstMeasure = (
@@ -1921,10 +1959,11 @@ private fun ChartCanvas(
                                 color = PlayerMeasureText.toArgb()
                                 textSize = labelTextSize
                                 typeface = Typeface.DEFAULT_BOLD
+                                textAlign = Paint.Align.CENTER
                             }
                             canvas.nativeCanvas.drawText(
                                 measure.toString(),
-                                4f,
+                                infoCenterX,
                                 (y - 4f).coerceAtLeast(labelTextSize),
                                 paint,
                             )
@@ -1948,10 +1987,11 @@ private fun ChartCanvas(
                             color = PlayerBpmGreen.toArgb()
                             textSize = labelTextSize
                             typeface = Typeface.DEFAULT_BOLD
+                            textAlign = Paint.Align.CENTER
                         }
                         canvas.nativeCanvas.drawText(
                             "BPM ${formatPlayerBpm(change.bpm)}",
-                            labelTextSize * 4.5f,
+                            infoCenterX,
                             (y - 4f).coerceAtLeast(labelTextSize),
                             paint,
                         )
@@ -1999,9 +2039,13 @@ private fun ChartCanvas(
                 else -> logicalLane
             }
             val laneIndex = displayLane.coerceIn(0, laneCount - 1)
-            val laneWidth = laneWidths.getOrElse(laneIndex) { 1f } * unit
+            // In SP 2P the gray information column is physically before the
+            // seven keys and scratch, so shift every displayed lane by one
+            // slot. The logical lane mapping remains unchanged.
+            val physicalLaneIndex = if (isSp) laneIndex + spLaneOffset else laneIndex
+            val laneWidth = laneWidths.getOrElse(physicalLaneIndex) { 1f } * unit
             val laneStart = if (isSp) {
-                laneLefts.getOrElse(laneIndex) { 0f }
+                laneLefts.getOrElse(physicalLaneIndex) { 0f }
             } else {
                 dpLaneStart(laneIndex)
             }
@@ -2097,7 +2141,16 @@ private fun String.optionAbbreviation(): String = when (this) {
 
 @Composable
 private fun ToastCard(message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(modifier.padding(14.dp).clickable { onDismiss() }, color = ComposeColor(0xFF1A2C27), shape = RoundedCornerShape(13.dp)) {
-        Text(message, color = Green, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+    LaunchedEffect(message) {
+        delay(2_200L)
+        onDismiss()
+    }
+    Surface(
+        modifier.padding(14.dp).clickable { onDismiss() },
+        color = ComposeColor(0xFF303038),
+        shape = RoundedCornerShape(6.dp),
+        shadowElevation = 4.dp,
+    ) {
+        Text(message, color = ComposeColor.White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
     }
 }
