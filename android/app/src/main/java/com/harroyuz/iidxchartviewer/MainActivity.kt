@@ -140,6 +140,14 @@ private val PlayerMeasureText = ComposeColor(0xFFB7BAC6)
 private const val TEXTAGE_SYNC_INTERVAL_MS = 24L * 60L * 60L * 1000L
 private const val UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
+private enum class DataSyncTarget {
+    FULL,
+    TEXTAGE,
+    BJM_ALL,
+    BJM_MUSIC,
+    BJM_SCORES,
+}
+
 class MainActivity : ComponentActivity() {
     private lateinit var store: IidxLocalStore
     private lateinit var bjmClient: BjmClient
@@ -149,7 +157,8 @@ class MainActivity : ComponentActivity() {
     private var appState by mutableStateOf(IidxAppState())
     private var bjmIndex by mutableStateOf(BjmIndex())
     private var localCatalogPresent by mutableStateOf(false)
-    private var bjmSyncing by mutableStateOf(false)
+    private var syncTarget by mutableStateOf<DataSyncTarget?>(null)
+    private var syncStage by mutableStateOf<String?>(null)
     private var textageSyncing by mutableStateOf(false)
     private var textageProgress by mutableStateOf<TextageSyncProgress?>(null)
     private var textageError by mutableStateOf<String?>(null)
@@ -219,10 +228,16 @@ class MainActivity : ComponentActivity() {
                     updateInfo = updateInfo,
                     updateDownloadProgress = updateDownloadProgress,
                     updateInstalling = updateInstalling,
+                    syncTarget = syncTarget,
+                    syncStage = syncStage,
                     onDismissMessage = { message = null },
                     onLogin = ::openBjmLogin,
                     onOpenBjmProfile = {},
                     onRefreshTextage = ::refreshTextage,
+                    onFullDataSync = ::syncAllData,
+                    onSyncTextage = ::syncTextageOnly,
+                    onSyncBjmMusic = ::syncBjmMusicOnly,
+                    onSyncBjmScores = ::syncBjmScoresOnly,
                     onOpenGithub = ::openGithub,
                     onCheckForUpdates = { checkForUpdates(manual = true) },
                     settingsPageVisible = settingsPageVisible,
@@ -269,29 +284,9 @@ class MainActivity : ComponentActivity() {
                 // completed catalog should open immediately; the update
                 // button performs the next metadata refresh on demand.
                 val needsBootstrap = loaded.charts.isEmpty() || !store.isTextageSyncComplete()
-                val dailySyncDue = System.currentTimeMillis() - store.textageLastSyncAt() >= TEXTAGE_SYNC_INTERVAL_MS
+                val dailySyncDue = System.currentTimeMillis() - store.fullSyncLastAt() >= TEXTAGE_SYNC_INTERVAL_MS
                 if (needsBootstrap || dailySyncDue) {
-                    refreshTextage()
-                }
-                if (loaded.bjmUser != null && loaded.bjmMusic.isEmpty()) {
-                    lifecycleScope.launch {
-                        val music = runCatching { withContext(Dispatchers.IO) { bjmClient.fetchMusicDatabase() } }
-                            .getOrDefault(emptyList())
-                        if (music.isNotEmpty()) {
-                            val nextState = appState.copy(bjmMusic = music)
-                            val musicRevision = System.currentTimeMillis()
-                            val nextBjmIndex = withContext(Dispatchers.Default) {
-                                rebuildBjmMusicIndex(nextState, bjmIndex, store.textageLastSyncAt(), musicRevision, store.bjmScoresRevision())
-                            }
-                            appState = nextState
-                            bjmIndex = nextBjmIndex
-                            withContext(Dispatchers.IO) {
-                                store.setBjmMusicRevision(musicRevision)
-                                store.save(nextState)
-                                store.saveBjmIndex(nextBjmIndex)
-                            }
-                        }
-                    }
+                    syncAllData()
                 }
                 checkForUpdatesIfDue()
             }
@@ -380,109 +375,228 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun syncBjm() {
-        if (bjmSyncing) return
-        bjmSyncing = true
+    private fun startDataSync(target: DataSyncTarget, action: suspend () -> Unit) {
+        if (syncTarget != null) return
+        syncTarget = target
+        syncStage = null
         lifecycleScope.launch {
             try {
-                val result = bjmClient.fetchScores()
-                val music = runCatching { bjmClient.fetchMusicDatabase() }
-                    .getOrElse { appState.bjmMusic }
-                val nextState = appState.copy(
-                    bjmScores = result.scores,
-                    bjmMusic = music,
-                    bjmUser = result.user,
-                    bjmSyncedAt = System.currentTimeMillis(),
-                )
-                val bjmRevision = System.currentTimeMillis()
-                val nextBjmIndex = withContext(Dispatchers.Default) {
-                    buildBjmIndex(nextState, store.textageLastSyncAt(), bjmRevision, bjmRevision)
-                }
-                appState = nextState
-                bjmIndex = nextBjmIndex
-                withContext(Dispatchers.IO) {
-                    store.setBjmMusicRevision(bjmRevision)
-                    store.setBjmScoresRevision(bjmRevision)
-                    store.save(nextState)
-                    store.saveBjmIndex(nextBjmIndex)
-                }
-                message = "已同步 ${result.scores.size} 条 BJM 成绩"
+                action()
             } catch (error: Exception) {
-                message = error.message ?: "BJM 同步失败"
+                message = error.message ?: "数据同步失败"
             } finally {
-                bjmSyncing = false
+                syncStage = null
+                syncTarget = null
             }
         }
     }
 
-    private fun refreshTextage() {
-        if (textageSyncing) return
+    private fun syncBjm() {
+        startDataSync(DataSyncTarget.BJM_ALL) {
+            syncStage = "正在同步 BJM 曲目库"
+            syncBjmMusicData()
+            syncStage = "正在同步用户成绩"
+            val count = syncBjmScoresData()
+            syncStage = "正在构建索引"
+            rebuildFullBjmIndex()
+            message = "已同步 $count 条 BJM 成绩"
+        }
+    }
+
+    private fun syncAllData() {
+        startDataSync(DataSyncTarget.FULL) {
+            syncStage = "正在同步 Textage 歌曲库"
+            syncTextageData()
+            if (appState.bjmUser != null) {
+                syncStage = "正在同步 BJM 曲目库"
+                syncBjmMusicData()
+                syncStage = "正在同步用户成绩"
+                syncBjmScoresData()
+            }
+            syncStage = "正在构建索引"
+            rebuildFullBjmIndex()
+            store.setFullSyncLastAt()
+            message = "全量数据同步完成"
+        }
+    }
+
+    private fun refreshTextage() = syncTextageOnly()
+
+    private fun syncTextageOnly() {
+        startDataSync(DataSyncTarget.TEXTAGE) {
+            syncStage = "正在同步 Textage 歌曲库"
+            syncTextageData()
+            syncStage = "正在构建索引"
+            rebuildTextageBjmIndex()
+            message = "Textage 歌曲库同步完成"
+        }
+    }
+
+    private fun syncBjmMusicOnly() {
+        if (appState.bjmUser == null) {
+            message = "请先登录 BJM"
+            return
+        }
+        startDataSync(DataSyncTarget.BJM_MUSIC) {
+            syncStage = "正在同步 BJM 曲目库"
+            syncBjmMusicData()
+            syncStage = "正在构建索引"
+            rebuildBjmMusicIndex()
+            message = "BJM 曲目库同步完成"
+        }
+    }
+
+    private fun syncBjmScoresOnly() {
+        if (appState.bjmUser == null) {
+            message = "请先登录 BJM"
+            return
+        }
+        startDataSync(DataSyncTarget.BJM_SCORES) {
+            syncStage = "正在同步用户成绩"
+            val count = syncBjmScoresData()
+            syncStage = "正在构建索引"
+            rebuildBjmScoresIndex()
+            message = "已同步 $count 条 BJM 成绩"
+        }
+    }
+
+    private suspend fun syncTextageData() {
         val initial = appState.charts.isEmpty() || !store.isTextageSyncComplete()
         textageSyncing = true
         textageError = null
         textageProgress = TextageSyncProgress(initial, 0, 0, "正在获取全部歌曲元数据…")
-        lifecycleScope.launch {
-            try {
-                var lastProgressPublishedAt = 0L
-                var lastProgressCompleted = 0
-                val imported = textageClient.fetchCatalog { completed, total, title ->
-                    val now = SystemClock.uptimeMillis()
-                    val publish = completed == total ||
-                        now - lastProgressPublishedAt >= 120L ||
-                        completed - lastProgressCompleted >= 32
-                    if (publish) {
-                        lastProgressPublishedAt = now
-                        lastProgressCompleted = completed
-                        withContext(Dispatchers.Main.immediate) {
-                            textageProgress = TextageSyncProgress(initial, completed, total, title)
-                        }
+        try {
+            var lastProgressPublishedAt = 0L
+            var lastProgressCompleted = 0
+            val imported = textageClient.fetchCatalog { completed, total, title ->
+                val now = SystemClock.uptimeMillis()
+                val publish = completed == total ||
+                    now - lastProgressPublishedAt >= 120L ||
+                    completed - lastProgressCompleted >= 32
+                if (publish) {
+                    lastProgressPublishedAt = now
+                    lastProgressCompleted = completed
+                    withContext(Dispatchers.Main.immediate) {
+                        textageProgress = TextageSyncProgress(initial, completed, total, title)
                     }
                 }
-                if (imported.isEmpty()) throw TextageException("Textage 没有返回可识别的谱面目录")
-                val old = appState.charts.associateBy { it.id }
-                val merged = imported.map { incoming ->
-                    old[incoming.id]?.let { previous ->
-                        incoming.copy(
-                            notes = if (incoming.notes > 0) incoming.notes else previous.notes,
-                            score = previous.score,
-                            confirmed = previous.confirmed,
-                        )
-                    } ?: incoming
-                }
-                val nextState = appState.copy(charts = merged)
-                val textageRevision = System.currentTimeMillis()
-                val nextBjmIndex = withContext(Dispatchers.Default) {
-                    rebuildBjmTextageIndex(
-                        nextState,
-                        bjmIndex,
-                        textageRevision,
-                        store.bjmMusicRevision(),
-                        store.bjmScoresRevision(),
+            }
+            if (imported.isEmpty()) throw TextageException("Textage 没有返回可识别的谱面目录")
+            val old = appState.charts.associateBy { it.id }
+            val merged = imported.map { incoming ->
+                old[incoming.id]?.let { previous ->
+                    incoming.copy(
+                        notes = if (incoming.notes > 0) incoming.notes else previous.notes,
+                        score = previous.score,
+                        confirmed = previous.confirmed,
                     )
-                }
-                appState = nextState
-                bjmIndex = nextBjmIndex
-                textageProgress = TextageSyncProgress(
-                    initial = initial,
-                    completed = textageProgress?.total ?: imported.size,
-                    total = textageProgress?.total ?: imported.size,
-                    currentTitle = "歌曲元数据获取完成",
-                )
-                withContext(Dispatchers.IO) {
-                    store.save(nextState)
-                    store.saveBjmIndex(nextBjmIndex)
-                }
+                } ?: incoming
+            }
+            val nextState = appState.copy(charts = merged)
+            appState = nextState
+            val textageRevision = System.currentTimeMillis()
+            withContext(Dispatchers.IO) {
+                store.save(nextState)
                 store.setTextageSyncComplete(true)
                 store.setTextageLastSyncAt(textageRevision)
-                textageProgress = null
-            } catch (error: Exception) {
-                textageError = error.message ?: "Textage 更新失败"
-                message = textageError
-                if (!initial) textageProgress = null
-            } finally {
-                textageSyncing = false
             }
+            textageProgress = TextageSyncProgress(
+                initial = initial,
+                completed = textageProgress?.total ?: imported.size,
+                total = textageProgress?.total ?: imported.size,
+                currentTitle = "歌曲元数据获取完成",
+            )
+            textageProgress = null
+        } catch (error: Exception) {
+            textageError = error.message ?: "Textage 更新失败"
+            if (!initial) textageProgress = null
+            throw error
+        } finally {
+            textageSyncing = false
         }
+    }
+
+    private suspend fun syncBjmMusicData() {
+        val music = bjmClient.fetchMusicDatabase()
+        if (music.isEmpty()) throw BjmException("BJM 曲目数据库为空")
+        val nextState = appState.copy(bjmMusic = music)
+        val revision = System.currentTimeMillis()
+        appState = nextState
+        withContext(Dispatchers.IO) {
+            store.setBjmMusicRevision(revision)
+            store.save(nextState)
+        }
+    }
+
+    private suspend fun syncBjmScoresData(): Int {
+        val result = bjmClient.fetchScores()
+        val nextState = appState.copy(
+            bjmScores = result.scores,
+            bjmUser = result.user,
+            bjmSyncedAt = System.currentTimeMillis(),
+        )
+        val revision = System.currentTimeMillis()
+        appState = nextState
+        withContext(Dispatchers.IO) {
+            store.setBjmScoresRevision(revision)
+            store.save(nextState)
+        }
+        return result.scores.size
+    }
+
+    private suspend fun rebuildFullBjmIndex() {
+        val next = withContext(Dispatchers.Default) {
+            buildBjmIndex(
+                appState,
+                store.textageLastSyncAt(),
+                store.bjmMusicRevision(),
+                store.bjmScoresRevision(),
+            )
+        }
+        bjmIndex = next
+        withContext(Dispatchers.IO) { store.saveBjmIndex(next) }
+    }
+
+    private suspend fun rebuildTextageBjmIndex() {
+        val next = withContext(Dispatchers.Default) {
+            rebuildBjmTextageIndex(
+                appState,
+                bjmIndex,
+                store.textageLastSyncAt(),
+                store.bjmMusicRevision(),
+                store.bjmScoresRevision(),
+            )
+        }
+        bjmIndex = next
+        withContext(Dispatchers.IO) { store.saveBjmIndex(next) }
+    }
+
+    private suspend fun rebuildBjmMusicIndex() {
+        val next = withContext(Dispatchers.Default) {
+            rebuildBjmMusicIndex(
+                appState,
+                bjmIndex,
+                store.textageLastSyncAt(),
+                store.bjmMusicRevision(),
+                store.bjmScoresRevision(),
+            )
+        }
+        bjmIndex = next
+        withContext(Dispatchers.IO) { store.saveBjmIndex(next) }
+    }
+
+    private suspend fun rebuildBjmScoresIndex() {
+        val next = withContext(Dispatchers.Default) {
+            rebuildBjmScoresIndex(
+                appState,
+                bjmIndex,
+                store.textageLastSyncAt(),
+                store.bjmMusicRevision(),
+                store.bjmScoresRevision(),
+            )
+        }
+        bjmIndex = next
+        withContext(Dispatchers.IO) { store.saveBjmIndex(next) }
     }
 
     private fun openChart(chart: IidxChart) {
@@ -585,10 +699,16 @@ private fun IidxApp(
     updateInfo: GithubReleaseInfo?,
     updateDownloadProgress: Float?,
     updateInstalling: Boolean,
+    syncTarget: DataSyncTarget?,
+    syncStage: String?,
     settingsPageVisible: Boolean,
     onLogin: () -> Unit,
     onOpenBjmProfile: () -> Unit,
     onRefreshTextage: () -> Unit,
+    onFullDataSync: () -> Unit,
+    onSyncTextage: () -> Unit,
+    onSyncBjmMusic: () -> Unit,
+    onSyncBjmScores: () -> Unit,
     onOpenGithub: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -631,9 +751,15 @@ private fun IidxApp(
                     onLogin = onLogin,
                     onOpenBjmProfile = onOpenBjmProfile,
                     onRefreshTextage = onRefreshTextage,
+                    onFullDataSync = onFullDataSync,
+                    onSyncTextage = onSyncTextage,
+                    onSyncBjmMusic = onSyncBjmMusic,
+                    onSyncBjmScores = onSyncBjmScores,
                     onOpenGithub = onOpenGithub,
                     onCheckForUpdates = onCheckForUpdates,
                     updateChecking = updateChecking,
+                    syncTarget = syncTarget,
+                    syncStage = syncStage,
                     settingsPageVisible = settingsPageVisible,
                     onOpenSettings = onOpenSettings,
                     onDismissSettings = onDismissSettings,
@@ -755,9 +881,15 @@ private fun ChartBrowserScreen(
     onLogin: () -> Unit,
     onOpenBjmProfile: () -> Unit,
     onRefreshTextage: () -> Unit,
+    onFullDataSync: () -> Unit,
+    onSyncTextage: () -> Unit,
+    onSyncBjmMusic: () -> Unit,
+    onSyncBjmScores: () -> Unit,
     onOpenGithub: () -> Unit,
     onCheckForUpdates: () -> Unit,
     updateChecking: Boolean,
+    syncTarget: DataSyncTarget?,
+    syncStage: String?,
     settingsPageVisible: Boolean,
     onOpenSettings: () -> Unit,
     onDismissSettings: () -> Unit,
@@ -875,10 +1007,15 @@ private fun ChartBrowserScreen(
                 enabled = autoUpdateEnabled,
                 onEnabledChange = onAutoUpdateEnabledChange,
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },
-                textageSyncing = textageSyncing,
                 textageProgress = textageProgress,
                 textageError = textageError,
-                onRefreshTextage = onRefreshTextage,
+                syncTarget = syncTarget,
+                syncStage = syncStage,
+                bjmLoggedIn = state.bjmUser != null,
+                onFullDataSync = onFullDataSync,
+                onSyncTextage = onSyncTextage,
+                onSyncBjmMusic = onSyncBjmMusic,
+                onSyncBjmScores = onSyncBjmScores,
                 onClearChartCache = onClearChartCache,
             )
         } else {
@@ -1108,12 +1245,19 @@ private fun UpdateSettingsScreen(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onOpenMenu: () -> Unit,
-    textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
     textageError: String?,
-    onRefreshTextage: () -> Unit,
+    syncTarget: DataSyncTarget?,
+    syncStage: String?,
+    bjmLoggedIn: Boolean,
+    onFullDataSync: () -> Unit,
+    onSyncTextage: () -> Unit,
+    onSyncBjmMusic: () -> Unit,
+    onSyncBjmScores: () -> Unit,
     onClearChartCache: () -> Unit,
 ) {
+    val syncing = syncTarget != null
+
     Column(Modifier.fillMaxSize().background(Background)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1146,17 +1290,62 @@ private fun UpdateSettingsScreen(
             }
             HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
             SettingsActionRow(
-                title = "同步歌曲数据",
-                subtitle = "从 Textage 更新歌曲元数据",
-                actionLabel = if (textageSyncing) "同步中…" else "同步",
-                enabled = !textageSyncing,
-                onClick = onRefreshTextage,
+                title = "全量数据同步",
+                subtitle = "按顺序同步 Textage、BJM 曲目库和用户成绩",
+                actionLabel = if (syncTarget == DataSyncTarget.FULL) "同步中…" else "同步",
+                enabled = !syncing,
+                onClick = onFullDataSync,
+            )
+            if (!syncStage.isNullOrBlank()) {
+                Text(
+                    syncStage,
+                    color = Purple,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 2.dp),
+                )
+            }
+            HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
+            Text(
+                "单独同步数据源",
+                color = Muted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 2.dp),
+            )
+            SettingsActionRow(
+                title = "Textage 歌曲库",
+                subtitle = "同步歌曲元数据",
+                actionLabel = if (syncTarget == DataSyncTarget.TEXTAGE) "同步中…" else "同步",
+                enabled = !syncing,
+                onClick = onSyncTextage,
+            )
+            SettingsActionRow(
+                title = "BJM 曲目库",
+                subtitle = "同步 BJM 曲目元数据",
+                actionLabel = when {
+                    syncTarget == DataSyncTarget.BJM_MUSIC -> "同步中…"
+                    !bjmLoggedIn -> "需登录"
+                    else -> "同步"
+                },
+                enabled = !syncing && bjmLoggedIn,
+                onClick = onSyncBjmMusic,
+            )
+            SettingsActionRow(
+                title = "用户成绩库",
+                subtitle = "同步当前 BJM 用户成绩",
+                actionLabel = when {
+                    syncTarget == DataSyncTarget.BJM_SCORES -> "同步中…"
+                    !bjmLoggedIn -> "需登录"
+                    else -> "同步"
+                },
+                enabled = !syncing && bjmLoggedIn,
+                onClick = onSyncBjmScores,
             )
             SettingsActionRow(
                 title = "清除谱面缓存",
                 subtitle = "下次打开谱面时重新解析",
                 actionLabel = "清除",
-                enabled = !textageSyncing,
+                enabled = !syncing,
                 onClick = onClearChartCache,
             )
             if (textageProgress != null) TextageSyncBanner(textageProgress)
@@ -1745,6 +1934,7 @@ private fun DifficultyScoreCard(
                     fillColor = ComposeColor.White,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
+                    strokeWidth = 1.3f,
                 )
                 rankDeltaText(score.exScore, chart.notes)
                     .takeIf { it.isNotBlank() }
@@ -1866,6 +2056,20 @@ private fun rebuildBjmMusicIndex(
     scoresRevision: Long,
 ): BjmIndex = previous.copy(
     songMusicIds = buildSongMusicIds(state.charts, state.bjmMusic),
+    textageRevision = textageRevision,
+    musicRevision = musicRevision,
+    scoresRevision = scoresRevision,
+    built = true,
+)
+
+private fun rebuildBjmScoresIndex(
+    state: IidxAppState,
+    previous: BjmIndex,
+    textageRevision: Long,
+    musicRevision: Long,
+    scoresRevision: Long,
+): BjmIndex = previous.copy(
+    scoresByKey = state.bjmScores.associateBy { it.key },
     textageRevision = textageRevision,
     musicRevision = musicRevision,
     scoresRevision = scoresRevision,

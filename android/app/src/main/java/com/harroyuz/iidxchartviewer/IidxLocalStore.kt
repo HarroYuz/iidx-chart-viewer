@@ -157,6 +157,12 @@ class IidxLocalStore(context: Context) {
         preferences.edit().putLong("bjm_scores_revision", timestamp).apply()
     }
 
+    fun fullSyncLastAt(): Long = preferences.getLong("full_sync_last_at", 0L)
+
+    fun setFullSyncLastAt(timestamp: Long = System.currentTimeMillis()) {
+        preferences.edit().putLong("full_sync_last_at", timestamp).apply()
+    }
+
     fun hasTextageCatalog(): Boolean = preferences.getBoolean("textage_catalog_present", false) && load().charts.isNotEmpty()
 
     fun hasTextageCatalogMarker(): Boolean = preferences.getBoolean("textage_catalog_present", false)
