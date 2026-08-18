@@ -7,6 +7,29 @@ import org.junit.Test
 
 class TextageClientTest {
     @Test
+    fun buildsTextageChartUrlWithSideDifficultyAndLevel() {
+        val spChart = IidxChart(
+            id = "thearth8-spa",
+            title = "THE EARTH LIGHT",
+            mode = "SP",
+            difficulty = "H",
+            level = 7,
+            notes = 1,
+            version = "substream",
+        )
+        val dpChart = spChart.copy(id = "thearth8-dpa", mode = "DP", difficulty = "A", level = 12)
+
+        assertEquals(
+            "https://textage.cc/score/s/thearth8.html?1H700",
+            buildTextageChartUrl("https://textage.cc/score/s/thearth8.html", spChart),
+        )
+        assertEquals(
+            "https://textage.cc/score/s/thearth8.html?DAC00",
+            buildTextageChartUrl("https://textage.cc/score/s/thearth8.html?old", dpChart),
+        )
+    }
+
+    @Test
     fun parsesTextageSourceLabelAndSubstreamUrl() = runBlocking {
         val versions = (0 until 36).joinToString(",") { "\"v$it\"" } + ",\"substream\""
         val source = """

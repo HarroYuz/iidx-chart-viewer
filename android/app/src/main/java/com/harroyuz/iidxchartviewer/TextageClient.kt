@@ -47,15 +47,7 @@ class TextageClient {
     }
 
     private fun chartPageUrl(baseUrl: String, chart: IidxChart): String {
-        val mode = if (chart.mode == "DP") "D" else "s"
-        val difficulty = when (chart.difficulty) {
-            "A" -> "A"
-            "L" -> "X"
-            "N" -> "N"
-            "B" -> "B"
-            else -> "H"
-        }
-        return baseUrl + if (baseUrl.contains('?')) "&$mode$difficulty" else "?$mode$difficulty"
+        return buildTextageChartUrl(baseUrl, chart)
     }
 
     private fun getHtml(url: String): String {
@@ -156,6 +148,7 @@ internal object TextageParser {
             levelEntries[key] = mergeChartValues(levelEntries[key], values)
         }
         val versions = parseStringArray(source, "vertbl")
+        val substreamVersionIndex = versions.indexOfFirst { it.equals("substream", ignoreCase = true) }
         val result = ArrayList<IidxChart>()
         val total = titleEntries.size
         for ((index, entry) in titleEntries.withIndex()) {
@@ -179,7 +172,6 @@ internal object TextageParser {
             // /score/0/chocopla.html), not a missing-version marker. A chart
             // with zero notes still stays in the catalog as an unavailable
             // difficulty, but must not receive a clickable page URL.
-            val substreamVersionIndex = versions.indexOfFirst { it.equals("substream", ignoreCase = true) }
             val textageVersionDirectory = if (versionIndex == substreamVersionIndex) {
                 "s"
             } else {
@@ -1039,4 +1031,17 @@ internal object TextageParser {
         .trim('-')
         .ifBlank { "song" }
 
+}
+
+internal fun buildTextageChartUrl(baseUrl: String, chart: IidxChart): String {
+    val mode = if (chart.mode == "DP") "D" else "1"
+    val difficulty = when (chart.difficulty) {
+        "A" -> "A"
+        "L" -> "X"
+        "N" -> "N"
+        "B" -> "B"
+        else -> "H"
+    }
+    val level = chart.level.coerceIn(0, 35).toString(36).uppercase(Locale.ROOT)
+    return "${baseUrl.substringBefore('?')}?$mode$difficulty${level}00"
 }
