@@ -96,6 +96,7 @@ internal object TextageParser {
     private const val TEXTAGE_BAR_TICKS = 384
     private const val TEXTAGE_QUARTER_TICKS = 96f
     private const val TEXTAGE_POSITION_TICKS = 32f
+    private const val TEXTAGE_SOURCE_LABEL_INDEX = 23
     private val tagPattern = Regex("(?is)<[^>]+>")
     private val scriptPattern = Regex("(?is)<script\\b[^>]*>")
     private val chartSlots = listOf(
@@ -145,8 +146,12 @@ internal object TextageParser {
     ): List<IidxChart> {
         val titleEntries = parseObjectEntries(source, "titletbl")
         val noteEntries = parseObjectEntries(source, "datatbl").associateBy { it.first }
+        val arcadeLevelEntries = parseObjectEntries(source, "actbl")
+        val sourceLabels = arcadeLevelEntries.associate { (key, values) ->
+            key to values.getOrNull(TEXTAGE_SOURCE_LABEL_INDEX)?.text.orEmpty().let(::cleanJsText)
+        }
         val levelEntries = LinkedHashMap<String, List<JsValue>>()
-        parseObjectEntries(source, "actbl").forEach { levelEntries[it.first] = it.second }
+        arcadeLevelEntries.forEach { levelEntries[it.first] = it.second }
         parseIndexedObjects(source, "cstbl").forEach { (key, values) ->
             levelEntries[key] = mergeChartValues(levelEntries[key], values)
         }
@@ -168,12 +173,19 @@ internal object TextageParser {
             val version = versions.getOrNull(versionIndex)?.ifBlank { null } ?: "Textage"
             val notes = noteEntries[key]?.second.orEmpty()
             val levels = levelEntries[key].orEmpty()
+            val sourceLabel = sourceLabels[key].orEmpty()
             val bpm = notes.lastOrNull()?.text.orEmpty().let(::cleanJsText)
             // Version 0 is a real Textage directory (for example
             // /score/0/chocopla.html), not a missing-version marker. A chart
             // with zero notes still stays in the catalog as an unavailable
             // difficulty, but must not receive a clickable page URL.
-            val chartBaseUrl = "https://textage.cc/score/${versionIndex.coerceAtLeast(0)}/${key}.html"
+            val substreamVersionIndex = versions.indexOfFirst { it.equals("substream", ignoreCase = true) }
+            val textageVersionDirectory = if (versionIndex == substreamVersionIndex) {
+                "s"
+            } else {
+                versionIndex.coerceAtLeast(0).toString()
+            }
+            val chartBaseUrl = "https://textage.cc/score/$textageVersionDirectory/${key}.html"
             chartSlots.forEach { slot ->
                 val level = levels.getOrNull(slot.levelIndex)?.intValue() ?: 0
                 if (level <= 0) return@forEach
@@ -190,6 +202,7 @@ internal object TextageParser {
                     level = level,
                     notes = noteCount,
                     version = version,
+                    sourceLabel = sourceLabel,
                     textageUrl = chartBaseUrl.takeIf { noteCount > 0 },
                 )
             }

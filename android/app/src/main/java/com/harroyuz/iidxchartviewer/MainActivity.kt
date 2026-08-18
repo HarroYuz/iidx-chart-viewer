@@ -555,12 +555,11 @@ private fun IidxApp(
                     modifier = Modifier.alpha(if (selectedChart == null) 1f else 0f),
                 )
                 if (selectedChart != null) {
+                    val selectedSongKey = chartSongKey(selectedChart)
                     val family = state.charts
                         .filter {
                             it.mode == selectedChart.mode &&
-                                it.title == selectedChart.title &&
-                                it.subtitle == selectedChart.subtitle &&
-                                it.composer == selectedChart.composer
+                                chartSongKey(it) == selectedSongKey
                         }
                         .groupBy { it.difficulty }
                         .values
@@ -584,9 +583,7 @@ private fun IidxApp(
                             val alternate = state.charts
                                 .filter {
                                     it.mode == targetMode &&
-                                        it.title == selectedChart.title &&
-                                        it.subtitle == selectedChart.subtitle &&
-                                        it.composer == selectedChart.composer &&
+                                        chartSongKey(it) == selectedSongKey &&
                                         it.textageUrl != null
                                 }
                                 .maxWithOrNull(
@@ -750,13 +747,23 @@ private fun ChartBrowserScreen(
                 onClearChartCache = onClearChartCache,
             )
         } else {
+        val maxNumericVersionIndex = remember(state.charts, mode) {
+            state.charts
+                .asSequence()
+                .filter { it.mode == mode }
+                .mapNotNull { it.textageUrl?.let(::textageVersionIndex) }
+                .maxOrNull()
+                ?: -1
+        }
+        val substreamSortIndex = maxNumericVersionIndex + 1
         val versionOrder = remember(state.charts, mode) {
             state.charts
                 .asSequence()
                 .filter { it.mode == mode && it.version.isNotBlank() }
                 .mapNotNull { chart ->
-                    val index = chart.textageUrl
-                        ?.let { Regex("/score/(\\d+)/").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull() }
+                    val index = chart.textageUrl?.let(::textageVersionIndex)
+                        ?: chart.version.takeIf { it.equals("substream", ignoreCase = true) }
+                            ?.let { substreamSortIndex }
                     index?.let { chart.version to it }
                 }
                 .toMap()
@@ -803,6 +810,7 @@ private fun ChartBrowserScreen(
                     genre = group.first().genre,
                     composer = group.first().composer,
                     version = group.first().version,
+                    sourceLabel = group.first().sourceLabel,
                     charts = group.groupBy { it.difficulty }.values.map { sameDifficulty ->
                         sameDifficulty.maxWithOrNull(
                             compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
@@ -1119,6 +1127,11 @@ private fun FilterDropdown(
 private fun versionNumber(value: String): Int =
     Regex("\\d+").find(value)?.value?.toIntOrNull() ?: Int.MAX_VALUE
 
+private fun textageVersionIndex(url: String): Int? =
+    Regex("/score/([^/]+)/").find(url)?.groupValues?.getOrNull(1)?.let { directory ->
+        if (directory == "s") 35 else directory.toIntOrNull()
+    }
+
 private fun chartSongKey(chart: IidxChart): String =
     chart.textageUrl
         ?.substringBefore('?')
@@ -1127,6 +1140,9 @@ private fun chartSongKey(chart: IidxChart): String =
         ?.takeIf { it.isNotBlank() }
         ?: chart.id.substringBeforeLast('-')
 
+private fun displayTitle(title: String, sourceLabel: String): String =
+    listOf(title.trim(), sourceLabel.trim()).filter { it.isNotBlank() }.joinToString(" ")
+
 private data class SongGroup(
     val key: String,
     val title: String,
@@ -1134,6 +1150,7 @@ private data class SongGroup(
     val genre: String,
     val composer: String,
     val version: String,
+    val sourceLabel: String,
     val charts: List<IidxChart>,
 )
 
@@ -1232,7 +1249,7 @@ private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modi
             Column(Modifier.weight(1f).padding(end = 10.dp)) {
                 Text(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(4.dp))
-                Text(song.title, color = Ink, fontSize = 16.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 16.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (song.subtitle.isNotBlank()) {
                     Text(song.subtitle, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -1369,7 +1386,7 @@ private fun ChartDetailScreen(
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp)
                 Spacer(Modifier.height(3.dp))
-                AutoScrollingText(chart.title, color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
+                AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
                 if (chart.subtitle.isNotBlank()) {
                     AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                 }

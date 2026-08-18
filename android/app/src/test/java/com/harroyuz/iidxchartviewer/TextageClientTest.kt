@@ -1,10 +1,35 @@
 package com.harroyuz.iidxchartviewer
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TextageClientTest {
+    @Test
+    fun parsesTextageSourceLabelAndSubstreamUrl() = runBlocking {
+        val versions = (0 until 36).joinToString(",") { "\"v$it\"" } + ",\"substream\""
+        val source = """
+            titletbl={
+                'thearth8':[36,1,1,"TRANCE","L.E.D. LIGHT","THE EARTH LIGHT"],
+            };
+            datatbl={
+                'thearth8':[0,0,398,530,725,0,0,456,718,581,0,"145"],
+            };
+            actbl={
+                'thearth8':[0,0,0,0,0,4,7,7,7,A,3,0,0,0,0,5,7,A,7,7,7,0,0,"(CS8th)"],
+            };
+            vertbl=[$versions];
+        """.trimIndent()
+
+        val charts = TextageParser.parseCatalog(source) { _, _, _ -> }
+        val chart = charts.first { it.mode == "SP" && it.difficulty == "A" }
+
+        assertEquals("(CS8th)", chart.sourceLabel)
+        assertEquals("substream", chart.version)
+        assertTrue(chart.textageUrl!!.startsWith("https://textage.cc/score/s/thearth8.html"))
+    }
+
     @Test
     fun decodesChargeNoteAcrossMeasures() {
         val source = """

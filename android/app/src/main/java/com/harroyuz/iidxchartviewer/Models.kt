@@ -12,6 +12,7 @@ data class IidxChart(
     val level: Int,
     val notes: Int,
     val version: String,
+    val sourceLabel: String = "",
     val score: Int? = null,
     val confirmed: Boolean = false,
     val textageUrl: String? = null,

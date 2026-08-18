@@ -10,7 +10,7 @@ class IidxLocalStore(context: Context) {
     private companion object {
         const val CHART_CACHE_VERSION = 7
         const val CATALOG_HEADER = "#iidx-catalog-v3"
-        const val TEXTAGE_CATALOG_PARSER_VERSION = 2
+        const val TEXTAGE_CATALOG_PARSER_VERSION = 3
     }
 
     private val preferences = context.getSharedPreferences("iidx-local-state", Context.MODE_PRIVATE)
@@ -276,10 +276,11 @@ class IidxLocalStore(context: Context) {
         val compact = allLines.firstOrNull() == CATALOG_HEADER
         allLines.drop(if (compact) 1 else 0).mapNotNull { line ->
             val values = line.split('\t')
-            if (values.size != 14) return@mapNotNull null
+            if (values.size !in 14..15) return@mapNotNull null
             runCatching {
                 val text = if (compact) ::unescapeField else ::decodeField
                 val number = if (compact) String::toInt else ::decodeIntField
+                val version = text(values[10])
                 IidxChart(
                     id = text(values[0]),
                     title = text(values[1]),
@@ -291,10 +292,11 @@ class IidxLocalStore(context: Context) {
                     difficulty = text(values[7]),
                     level = number(values[8]),
                     notes = number(values[9]),
-                    version = text(values[10]),
+                    version = version,
+                    sourceLabel = values.getOrNull(14)?.takeIf { it.isNotEmpty() }?.let(text).orEmpty(),
                     score = values[11].takeIf { it.isNotEmpty() }?.let(number),
                     confirmed = number(values[12]) == 1,
-                    textageUrl = values[13].takeIf { it.isNotEmpty() }?.let(text),
+                    textageUrl = values[13].takeIf { it.isNotEmpty() }?.let(text)?.normalizeTextageUrl(version),
                 )
             }.getOrNull()
         }.toList()
@@ -322,6 +324,7 @@ class IidxLocalStore(context: Context) {
                         chart.score?.toString().orEmpty(),
                         if (chart.confirmed) "1" else "0",
                         chart.textageUrl?.let(::escapeField).orEmpty(),
+                        escapeField(chart.sourceLabel),
                     ).joinToString("\t"),
                 )
             }
@@ -387,12 +390,15 @@ private fun IidxChart.toJson() = JSONObject().apply {
     put("level", level)
     put("notes", notes)
     put("version", version)
+    put("source_label", sourceLabel)
     put("score", score ?: JSONObject.NULL)
     put("confirmed", confirmed)
     put("textage_url", textageUrl ?: JSONObject.NULL)
 }
 
-private fun JSONObject.toChart() = IidxChart(
+private fun JSONObject.toChart(): IidxChart {
+    val version = optString("version", "Textage")
+    return IidxChart(
     id = optString("id"),
     title = optString("title"),
     subtitle = optString("subtitle"),
@@ -403,11 +409,22 @@ private fun JSONObject.toChart() = IidxChart(
     difficulty = optString("difficulty", "N"),
     level = optInt("level"),
     notes = optInt("notes"),
-    version = optString("version", "Textage"),
+    version = version,
+    sourceLabel = optString("source_label"),
     score = if (isNull("score")) null else optInt("score"),
     confirmed = optBoolean("confirmed"),
-    textageUrl = if (isNull("textage_url")) null else optString("textage_url").takeIf { it.isNotBlank() },
-)
+    textageUrl = if (isNull("textage_url")) null else optString("textage_url")
+        .takeIf { it.isNotBlank() }
+        ?.normalizeTextageUrl(version),
+    )
+}
+
+private fun String.normalizeTextageUrl(version: String): String =
+    if (version.equals("substream", ignoreCase = true)) {
+        replace(Regex("/score/[^/]+/"), "/score/s/")
+    } else {
+        this
+    }
 
 private fun BjmScore.toJson() = JSONObject().apply {
     put("music_id", musicId)
