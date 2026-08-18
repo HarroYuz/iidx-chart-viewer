@@ -156,6 +156,11 @@ data class BjmMusic(
     }
 }
 
+data class BjmIndex(
+    val chartMusicIds: Map<String, Int> = emptyMap(),
+    val scoresByKey: Map<String, BjmScore> = emptyMap(),
+)
+
 data class BjmUser(
     val id: String,
     val name: String,

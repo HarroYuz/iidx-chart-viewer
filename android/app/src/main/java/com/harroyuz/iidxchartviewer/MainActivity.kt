@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var githubUpdateClient: GithubUpdateClient
 
     private var appState by mutableStateOf(IidxAppState())
+    private var bjmIndex by mutableStateOf(BjmIndex())
     private var localCatalogPresent by mutableStateOf(false)
     private var bjmSyncing by mutableStateOf(false)
     private var textageSyncing by mutableStateOf(false)
@@ -202,6 +203,7 @@ class MainActivity : ComponentActivity() {
             )) {
                 IidxApp(
                     state = appState,
+                    bjmIndex = bjmIndex,
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
                     textageError = textageError,
@@ -246,8 +248,10 @@ class MainActivity : ComponentActivity() {
         // Loading a large local catalog is also kept off the main thread.
         lifecycleScope.launch(Dispatchers.IO) {
             val loaded = store.load()
+            val loadedBjmIndex = buildBjmIndex(loaded)
             withContext(Dispatchers.Main) {
                 appState = loaded
+                bjmIndex = loadedBjmIndex
                 // Bootstrap only when there is no usable local catalog. A
                 // completed catalog should open immediately; the update
                 // button performs the next metadata refresh on demand.
@@ -261,8 +265,11 @@ class MainActivity : ComponentActivity() {
                         val music = runCatching { withContext(Dispatchers.IO) { bjmClient.fetchMusicDatabase() } }
                             .getOrDefault(emptyList())
                         if (music.isNotEmpty()) {
-                            appState = appState.copy(bjmMusic = music)
-                            withContext(Dispatchers.IO) { store.save(appState) }
+                            val nextState = appState.copy(bjmMusic = music)
+                            val nextBjmIndex = withContext(Dispatchers.Default) { buildBjmIndex(nextState) }
+                            appState = nextState
+                            bjmIndex = nextBjmIndex
+                            withContext(Dispatchers.IO) { store.save(nextState) }
                         }
                     }
                 }
@@ -361,13 +368,16 @@ class MainActivity : ComponentActivity() {
                 val result = bjmClient.fetchScores()
                 val music = runCatching { bjmClient.fetchMusicDatabase() }
                     .getOrElse { appState.bjmMusic }
-                appState = appState.copy(
+                val nextState = appState.copy(
                     bjmScores = result.scores,
                     bjmMusic = music,
                     bjmUser = result.user,
                     bjmSyncedAt = System.currentTimeMillis(),
                 )
-                withContext(Dispatchers.IO) { store.save(appState) }
+                val nextBjmIndex = withContext(Dispatchers.Default) { buildBjmIndex(nextState) }
+                appState = nextState
+                bjmIndex = nextBjmIndex
+                withContext(Dispatchers.IO) { store.save(nextState) }
                 message = "已同步 ${result.scores.size} 条 BJM 成绩"
             } catch (error: Exception) {
                 message = error.message ?: "BJM 同步失败"
@@ -411,14 +421,17 @@ class MainActivity : ComponentActivity() {
                         )
                     } ?: incoming
                 }
-                appState = appState.copy(charts = merged)
+                val nextState = appState.copy(charts = merged)
+                val nextBjmIndex = withContext(Dispatchers.Default) { buildBjmIndex(nextState) }
+                appState = nextState
+                bjmIndex = nextBjmIndex
                 textageProgress = TextageSyncProgress(
                     initial = initial,
                     completed = textageProgress?.total ?: imported.size,
                     total = textageProgress?.total ?: imported.size,
                     currentTitle = "歌曲元数据获取完成",
                 )
-                withContext(Dispatchers.IO) { store.save(appState) }
+                withContext(Dispatchers.IO) { store.save(nextState) }
                 store.setTextageSyncComplete(true)
                 store.setTextageLastSyncAt()
                 textageProgress = null
@@ -515,6 +528,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun IidxApp(
     state: IidxAppState,
+    bjmIndex: BjmIndex,
     localCatalogPresent: Boolean,
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
@@ -567,6 +581,7 @@ private fun IidxApp(
                 // query, style and LazyColumn position survive a round trip.
                 ChartBrowserScreen(
                     state = state,
+                    bjmIndex = bjmIndex,
                     mode = browserMode,
                     onModeChange = { browserMode = it },
                     textageSyncing = textageSyncing,
@@ -652,8 +667,7 @@ private fun IidxApp(
                     SongDetailScreen(
                         song = selectedSong,
                         charts = family,
-                        bjmMusic = findBjmMusic(selectedSong, state.bjmMusic),
-                        scores = state.bjmScores,
+                        bjmIndex = bjmIndex,
                         mode = browserMode,
                         onBack = onBack,
                         onStyleToggle = {
@@ -693,6 +707,7 @@ private fun IidxApp(
 @Composable
 private fun ChartBrowserScreen(
     state: IidxAppState,
+    bjmIndex: BjmIndex,
     mode: String,
     onModeChange: (String) -> Unit,
     textageSyncing: Boolean,
@@ -886,9 +901,6 @@ private fun ChartBrowserScreen(
                     )
                 }
         }
-        val scoreByKey = remember(state.bjmUser, state.bjmScores) {
-            if (state.bjmUser == null) emptyMap() else state.bjmScores.associateBy { it.key }
-        }
         val songs = remember(allSongs, query, selectedVersion, selectedLevel) {
             allSongs.mapNotNull { song ->
                 val matchingCharts = song.charts.filter {
@@ -1038,8 +1050,7 @@ private fun ChartBrowserScreen(
                 items(songs, key = { it.key }) { song ->
                     SongGroupRow(
                         song = song,
-                        scoreByKey = scoreByKey,
-                        bjmMusic = state.bjmMusic,
+                        bjmIndex = bjmIndex,
                         onOpenSong = onOpenSong,
                         onOpenChart = onOpenChart,
                         onCopyText = onCopyText,
@@ -1366,8 +1377,7 @@ private fun TextageSyncBanner(progress: TextageSyncProgress) {
 @Composable
 private fun SongGroupRow(
     song: SongGroup,
-    scoreByKey: Map<String, BjmScore>,
-    bjmMusic: List<BjmMusic>,
+    bjmIndex: BjmIndex,
     onOpenSong: (IidxChart) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
@@ -1428,7 +1438,7 @@ private fun SongGroupRow(
                 DifficultyChip(
                     chart = chart,
                     onOpenChart = onOpenChart,
-                    score = scoreForChart(chart, findBjmMusic(chart, bjmMusic), scoreByKey),
+                    score = scoreForChart(chart, bjmIndex),
                 )
             }
         }
@@ -1509,12 +1519,15 @@ private fun difficultyColor(value: String): ComposeColor = when (value) {
     else -> Muted
 }
 
-private fun scoreForChart(
-    chart: IidxChart,
-    music: BjmMusic?,
-    scoreByKey: Map<String, BjmScore>,
-): BjmScore? = music?.let { matchedMusic ->
-    scoreByKey["${matchedMusic.musicId}:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"]
+private fun bjmChartKey(chart: IidxChart): String = listOf(
+    songGroupKey(chart),
+    chart.mode,
+    chart.difficulty,
+).joinToString("\u0000")
+
+private fun scoreForChart(chart: IidxChart, index: BjmIndex): BjmScore? {
+    val musicId = index.chartMusicIds[bjmChartKey(chart)] ?: return null
+    return index.scoresByKey["$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"]
 }
 
 private fun clearFlagShortName(value: Int): String = when (value) {
@@ -1557,49 +1570,16 @@ private fun rankDeltaText(exScore: Int, noteCount: Int): String =
     rankSummary(exScore, noteCount).substringAfter(' ', "").trim()
 
 @Composable
-private fun ClearBadge(text: String, color: ComposeColor) {
-    Text(
-        text,
-        color = color,
-        fontSize = 9.sp,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        softWrap = false,
-        modifier = Modifier
-            .border(1.dp, Ink, RoundedCornerShape(3.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp),
-    )
-}
-
-@Composable
-private fun ScoreRankBadge(rank: String) {
-    if (rank.isNotBlank()) {
-        Text(
-            rank,
-            color = ComposeColor.White,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .background(Ink, RoundedCornerShape(3.dp))
-                .border(1.dp, Ink, RoundedCornerShape(3.dp))
-                .padding(horizontal = 4.dp, vertical = 1.dp),
-        )
-    }
-}
-
-@Composable
 private fun SongDetailScreen(
     song: IidxChart,
     charts: List<IidxChart>,
-    bjmMusic: BjmMusic?,
-    scores: List<BjmScore>,
+    bjmIndex: BjmIndex,
     mode: String,
     onBack: () -> Unit,
     onStyleToggle: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
 ) {
-    val scoreByKey = remember(scores) { scores.associateBy { it.key } }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1658,9 +1638,7 @@ private fun SongDetailScreen(
             items(charts, key = { it.id }) { chart ->
                 DifficultyScoreCard(
                     chart = chart,
-                    score = bjmMusic?.let { music ->
-                        scoreByKey["${music.musicId}:${if (mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"]
-                    },
+                    score = scoreForChart(chart, bjmIndex),
                     onOpenChart = onOpenChart,
                 )
             }
@@ -1697,11 +1675,17 @@ private fun DifficultyScoreCard(
             if (score == null) {
                 Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             } else {
-                ClearBadge(
-                    text = clearFlagDetailName(score.clearFlag) +
-                        (score.missCount.takeIf { it >= 0 }?.let { " ($it BP)" } ?: ""),
-                    color = clearFlagColor(score.clearFlag),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StrokedText(
+                        text = clearFlagDetailName(score.clearFlag),
+                        fillColor = clearFlagColor(score.clearFlag),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    score.missCount.takeIf { it >= 0 }?.let {
+                        Text(" ($it BP)", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -1718,7 +1702,12 @@ private fun DifficultyScoreCard(
                 Text(score.exScore.toString(), color = NormalBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(4.dp))
                 Text("(", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                ScoreRankBadge(scoreRankName(score.exScore, chart.notes))
+                StrokedText(
+                    text = scoreRankName(score.exScore, chart.notes),
+                    fillColor = ComposeColor.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
                 rankDeltaText(score.exScore, chart.notes)
                     .takeIf { it.isNotBlank() }
                     ?.let {
@@ -1758,14 +1747,24 @@ private fun rankSummary(exScore: Int, noteCount: Int): String {
     }
 }
 
-private fun findBjmMusic(chart: IidxChart, music: List<BjmMusic>): BjmMusic? {
-    if (music.isEmpty()) return null
+private fun normalizeMusicTitle(value: String): String =
+    Normalizer.normalize(value.trim(), Normalizer.Form.NFKC)
+        .lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+private fun buildBjmMusicIndex(music: List<BjmMusic>): Map<String, List<BjmMusic>> =
+    music
+        .flatMap { candidate ->
+            setOf(candidate.title, candidate.plainTitle)
+                .map(::normalizeMusicTitle)
+                .filter(String::isNotBlank)
+                .map { it to candidate }
+        }
+        .groupBy({ it.first }, { it.second })
+
+private fun findBjmMusic(chart: IidxChart, index: Map<String, List<BjmMusic>>): BjmMusic? {
     val titleKey = normalizeMusicTitle(chart.title)
-    val candidates = music.filter { candidate ->
-        titleKey.isNotBlank() && setOf(candidate.title, candidate.plainTitle)
-            .map(::normalizeMusicTitle)
-            .any { it == titleKey }
-    }
+    val candidates = index[titleKey].orEmpty()
     if (candidates.isEmpty()) return null
     val chartVersion = chart.textageUrl?.let(::textageVersionIndex)
     return candidates.maxWithOrNull(
@@ -1777,10 +1776,80 @@ private fun findBjmMusic(chart: IidxChart, music: List<BjmMusic>): BjmMusic? {
     )
 }
 
-private fun normalizeMusicTitle(value: String): String =
-    Normalizer.normalize(value.trim(), Normalizer.Form.NFKC)
-        .lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}]"), "")
+private fun buildBjmIndex(state: IidxAppState): BjmIndex {
+    val musicIndex = buildBjmMusicIndex(state.bjmMusic)
+    val chartMusicIds = state.charts.asSequence()
+        .mapNotNull { chart ->
+            findBjmMusic(chart, musicIndex)?.musicId?.let { musicId ->
+                bjmChartKey(chart) to musicId
+            }
+        }
+        .toMap()
+    return BjmIndex(
+        chartMusicIds = chartMusicIds,
+        scoresByKey = state.bjmScores.associateBy { it.key },
+    )
+}
+
+private data class StrokedTextMetrics(
+    val width: Float,
+    val height: Float,
+    val baseline: Float,
+)
+
+@Composable
+private fun StrokedText(
+    text: String,
+    fillColor: ComposeColor,
+    fontSize: TextUnit,
+    fontWeight: FontWeight? = null,
+    strokeColor: ComposeColor = Ink,
+    strokeWidth: Float = 0.8f,
+) {
+    val density = LocalDensity.current
+    val textSizePx = with(density) { fontSize.toPx() }
+    val metrics = remember(text, textSizePx, fontWeight) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = textSizePx
+            typeface = Typeface.create(
+                Typeface.DEFAULT,
+                if ((fontWeight?.weight ?: FontWeight.Normal.weight) >= FontWeight.Bold.weight) Typeface.BOLD else Typeface.NORMAL,
+            )
+        }
+        val fontMetrics = paint.fontMetrics
+        StrokedTextMetrics(
+            width = paint.measureText(text),
+            height = fontMetrics.bottom - fontMetrics.top,
+            baseline = -fontMetrics.top,
+        )
+    }
+    val strokePx = with(density) { strokeWidth.dp.toPx() }
+    Canvas(
+        Modifier
+            .width(with(density) { (metrics.width + strokePx * 2f).toDp() })
+            .height(with(density) { (metrics.height + strokePx * 2f).toDp() }),
+    ) {
+        drawIntoCanvas { canvas ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = textSizePx
+                typeface = Typeface.create(
+                    Typeface.DEFAULT,
+                    if ((fontWeight?.weight ?: FontWeight.Normal.weight) >= FontWeight.Bold.weight) Typeface.BOLD else Typeface.NORMAL,
+                )
+                this.strokeWidth = strokePx
+                this.strokeJoin = Paint.Join.ROUND
+            }
+            val x = strokePx
+            val y = strokePx + metrics.baseline
+            paint.style = Paint.Style.STROKE
+            paint.color = strokeColor.toArgb()
+            canvas.nativeCanvas.drawText(text, x, y, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = fillColor.toArgb()
+            canvas.nativeCanvas.drawText(text, x, y, paint)
+        }
+    }
+}
 
 @Composable
 private fun ChartDetailScreen(
