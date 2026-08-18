@@ -1780,7 +1780,7 @@ private fun SongGroupRow(
         }
         Spacer(Modifier.height(7.dp))
         LazyRow(
-            Modifier.fillMaxWidth().height(47.dp),
+            Modifier.fillMaxWidth().height(34.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(song.charts, key = { it.id }) { chart ->
@@ -1804,12 +1804,11 @@ private fun DifficultyChip(
     val accent = difficultyColor(chart.difficulty)
     val shape = RoundedCornerShape(14.dp)
     val available = chart.textageUrl != null
-    Column(
-        modifier = Modifier.width(42.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
+        modifier = Modifier.size(width = 42.dp, height = 34.dp),
     ) {
         Box(
-            Modifier.size(width = 42.dp, height = 34.dp)
+            Modifier.fillMaxSize()
                 .clip(shape)
                 .background(if (available) accent.copy(alpha = .13f) else Background)
                 .then(
@@ -1836,26 +1835,22 @@ private fun DifficultyChip(
             Text(if (chart.level > 0) chart.level.toString() else "—", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         }
         if (score != null) {
-            Row(
-                Modifier.fillMaxWidth().height(11.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    clearFlagShortName(score.clearFlag),
-                    color = clearFlagColor(score.clearFlag),
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-                Text(
-                    scoreRankName(score.exScore, chart.notes),
-                    color = Ink,
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-            }
+            Text(
+                clearFlagShortName(score.clearFlag),
+                color = clearFlagColor(score.clearFlag),
+                fontSize = 7.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 1.dp),
+            )
+            Text(
+                scoreRankName(score.exScore, chart.notes),
+                color = Ink,
+                fontSize = 7.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 1.dp),
+            )
         }
     }
 }
@@ -2006,8 +2001,8 @@ private fun DifficultyScoreCard(
             .background(if (available) accent.copy(alpha = .08f) else Background)
             .border(1.dp, accent.copy(alpha = if (available) .65f else .3f), shape)
             .clickable(enabled = available) { onOpenChart(chart) }
-            .padding(horizontal = 12.dp, vertical = 12.dp)
-            .heightIn(min = 72.dp),
+            .height(58.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
