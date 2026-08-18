@@ -21,6 +21,8 @@ class BjmClient {
         BjmSyncResult(user = user, scores = decoded.scores, status = decoded.status)
     }
 
+    fun probeAuthMe(): BjmUser? = authMe()
+
     private fun authMe(): BjmUser? {
         val response = request("/api/auth/me", "GET", null, "application/json")
         if (response.code !in 200..299) return null

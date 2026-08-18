@@ -4,43 +4,47 @@ import android.app.Activity
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.util.concurrent.Executors
 
 class BjmLoginActivity : Activity() {
     private lateinit var webView: WebView
     private val handler = Handler(Looper.getMainLooper())
+    private val probeExecutor = Executors.newSingleThreadExecutor()
     private var loginCompleted = false
+    @Volatile private var probeInFlight = false
     private val authPoll = object : Runnable {
         override fun run() {
             if (loginCompleted || !::webView.isInitialized) return
-            webView.evaluateJavascript(
-                """
-                    (async()=>{
-                        try {
-                            const response = await fetch('/api/auth/me', {
-                                credentials: 'include',
-                                cache: 'no-store',
-                                redirect: 'follow'
-                            });
-                            if (!response.ok || !response.url.endsWith('/api/auth/me')) return false;
-                            const contentType = response.headers.get('content-type') || '';
-                            if (!contentType.includes('application/json')) return false;
-                            const user = await response.json();
-                            return !!(user && user.id);
-                        } catch (error) {
-                            return false;
-                        }
-                    })();
-                """.trimIndent(),
-            ) { result ->
-                if (result == "true") completeLogin()
-                else if (!loginCompleted) handler.postDelayed(this, 700L)
+            if (probeInFlight) {
+                handler.postDelayed(this, AUTH_PROBE_INTERVAL_MS)
+                return
+            }
+            probeInFlight = true
+            val currentPoll = this
+            probeExecutor.execute {
+                val authenticated = runCatching {
+                    if (!hasWebViewCookies()) null else BjmClient().probeAuthMe()
+                }.getOrNull() != null
+                runOnUiThread {
+                    probeInFlight = false
+                    if (authenticated) completeLogin()
+                    else if (!loginCompleted) handler.postDelayed(currentPoll, AUTH_PROBE_INTERVAL_MS)
+                }
             }
         }
+    }
+
+    private companion object {
+        const val AUTH_PROBE_INTERVAL_MS = 1_200L
+        const val COOKIE_SYNC_RETRY_COUNT = 8
+        const val COOKIE_SYNC_RETRY_DELAY_MS = 120L
+        const val ORIGIN = "https://u.bjmania.com"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,6 +79,16 @@ class BjmLoginActivity : Activity() {
         webView.loadUrl("https://u.bjmania.com/login")
     }
 
+    private fun hasWebViewCookies(): Boolean {
+        val cookies = CookieManager.getInstance()
+        cookies.flush()
+        repeat(COOKIE_SYNC_RETRY_COUNT) {
+            if (!cookies.getCookie(ORIGIN).isNullOrBlank()) return true
+            SystemClock.sleep(COOKIE_SYNC_RETRY_DELAY_MS)
+        }
+        return !cookies.getCookie(ORIGIN).isNullOrBlank()
+    }
+
     override fun onBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) webView.goBack() else super.onBackPressed()
     }
@@ -90,8 +104,11 @@ class BjmLoginActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(authPoll)
-        webView.stopLoading()
-        webView.destroy()
+        probeExecutor.shutdownNow()
+        if (::webView.isInitialized) {
+            webView.stopLoading()
+            webView.destroy()
+        }
         super.onDestroy()
     }
 }
