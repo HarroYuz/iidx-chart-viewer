@@ -290,23 +290,32 @@ class MainActivity : ComponentActivity() {
                     localDataStage = "正在读取用户成绩索引"
                 }
                 val loadedBjmIndex = store.loadBjmIndex() ?: BjmIndex()
+                val indexNeedsRebuild = !isPersistedBjmIndexUsable(loaded, loadedBjmIndex, store)
                 withContext(Dispatchers.Main) {
                     bjmIndex = loadedBjmIndex
-                    localDataProgress = .72f
-                    localDataStage = "正在校验索引"
+                    localDataProgress = if (indexNeedsRebuild) .62f else .92f
+                    localDataStage = if (indexNeedsRebuild) "索引需要更新，正在重建" else "正在使用已保存索引"
                 }
-                val refreshedIndex = try {
-                    withContext(Dispatchers.Default) {
-                        refreshCachedBjmIndex(loaded, loadedBjmIndex, store)
+                val refreshedIndex = if (indexNeedsRebuild) {
+                    try {
+                        withContext(Dispatchers.Default) {
+                            buildBjmIndex(
+                                loaded,
+                                store.textageLastSyncAt(),
+                                store.bjmMusicRevision(),
+                                store.bjmScoresRevision(),
+                            )
+                        }
+                    } catch (error: Exception) {
+                        withContext(Dispatchers.Main) {
+                            message = "本地成绩索引重建失败，已使用旧索引"
+                        }
+                        loadedBjmIndex
                     }
-                } catch (error: Exception) {
-                    withContext(Dispatchers.Main) {
-                        message = "本地成绩索引校验失败，已使用缓存数据"
-                    }
-                    loadedBjmIndex
-                }
+                } else loadedBjmIndex
                 withContext(Dispatchers.Main) {
                     if (
+                        indexNeedsRebuild &&
                         appState.charts === loaded.charts &&
                         appState.bjmMusic === loaded.bjmMusic &&
                         appState.bjmScores === loaded.bjmScores
@@ -2154,31 +2163,19 @@ private fun rebuildBjmScoresIndex(
     built = true,
 )
 
-private fun refreshCachedBjmIndex(
+private fun isPersistedBjmIndexUsable(
     state: IidxAppState,
-    cached: BjmIndex,
+    index: BjmIndex,
     store: IidxLocalStore,
-): BjmIndex {
-    val textageRevision = store.textageLastSyncAt()
-    val musicRevision = store.bjmMusicRevision()
-    val scoresRevision = store.bjmScoresRevision()
-    var refreshed = cached
-    if (!cached.built || cached.textageRevision != textageRevision || cached.musicRevision != musicRevision) {
-        refreshed = refreshed.copy(
-            songMusicIds = buildSongMusicIds(state.charts, state.bjmMusic),
-            textageRevision = textageRevision,
-            musicRevision = musicRevision,
-            built = true,
-        )
-    }
-    if (!cached.built || refreshed.scoresRevision != scoresRevision) {
-        refreshed = refreshed.copy(
-            scoresByKey = state.bjmScores.associateBy { it.key },
-            scoresRevision = scoresRevision,
-            built = true,
-        )
-    }
-    return refreshed
+): Boolean {
+    if (!index.built) return false
+    if (index.textageRevision != store.textageLastSyncAt()) return false
+    if (index.musicRevision != store.bjmMusicRevision()) return false
+    if (index.scoresRevision != store.bjmScoresRevision()) return false
+    if (index.songMusicIds.any { it.key.isBlank() || it.value <= 0 }) return false
+    if (index.scoresByKey.any { (key, score) -> key.isBlank() || key != score.key }) return false
+    if (state.bjmScores.isNotEmpty() && index.scoresByKey.isEmpty()) return false
+    return true
 }
 
 private data class StrokedTextMetrics(
