@@ -1123,10 +1123,10 @@ private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modi
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(song.version.ifBlank { "—" }, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.version.ifBlank { "—" }, color = NormalBlue, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "BPM ${song.charts.firstOrNull()?.bpm?.ifBlank { "—" } ?: "—"}",
-                    color = Muted,
+                    color = NormalBlue,
                     fontSize = 9.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1210,16 +1210,25 @@ private fun ChartDetailScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "〈",
-                        color = Purple,
-                        fontSize = 20.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
+                    Box(
                         modifier = Modifier.size(22.dp),
-                    )
-                    Text("返回", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "〈",
+                            color = Purple,
+                            fontSize = 19.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.height(22.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("返回", color = Purple, fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
