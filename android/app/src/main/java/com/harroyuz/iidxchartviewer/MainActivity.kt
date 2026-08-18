@@ -2364,31 +2364,29 @@ private fun ChartDetailScreen(
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Spacer(Modifier.height(7.dp))
-            Text(
-                "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
-                color = difficultyColor(chart.difficulty),
-                fontSize = 10.sp,
-                letterSpacing = .8.sp,
-            )
-            Spacer(Modifier.height(7.dp))
-            Row(
-                Modifier.fillMaxWidth().height(34.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Row(
-                    Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    siblingCharts.forEach { sibling ->
-                        DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
+                        color = difficultyColor(chart.difficulty),
+                        fontSize = 10.sp,
+                        letterSpacing = .8.sp,
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Row(
+                        Modifier.fillMaxWidth().height(34.dp).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        siblingCharts.forEach { sibling ->
+                            DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id)
+                        }
                     }
                 }
                 Spacer(Modifier.width(10.dp))
                 ChartScoreSummary(
                     score = scoreForChart(chart, bjmIndex),
                     noteCount = chartData?.chart?.notes ?: chart.notes,
-                    modifier = Modifier.height(34.dp),
                 )
             }
         }
