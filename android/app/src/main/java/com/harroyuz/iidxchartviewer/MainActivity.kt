@@ -1838,18 +1838,18 @@ private fun DifficultyChip(
             Text(
                 clearFlagShortName(score.clearFlag),
                 color = clearFlagColor(score.clearFlag),
-                fontSize = 12.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 2.dp),
+                modifier = Modifier.align(Alignment.BottomStart),
             )
             Text(
                 scoreRankName(score.exScore, chart.notes),
                 color = Ink,
-                fontSize = 12.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp),
+                modifier = Modifier.align(Alignment.BottomEnd),
             )
         }
     }
