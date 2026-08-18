@@ -568,6 +568,7 @@ private fun IidxApp(
     Scaffold(containerColor = Background) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             var browserMode by rememberSaveable { mutableStateOf("SP") }
+            val chartsBySongKey = remember(state.charts) { state.charts.groupBy(::songGroupKey) }
             val showingBootstrap = !localCatalogPresent && (state.charts.isEmpty() || textageProgress?.initial == true)
             if (showingBootstrap) {
                 TextageBootstrapScreen(
@@ -609,10 +610,10 @@ private fun IidxApp(
                 )
                 if (selectedChart != null) {
                     val selectedSongKey = songGroupKey(selectedChart)
-                    val family = state.charts
+                    val songCharts = chartsBySongKey[selectedSongKey].orEmpty()
+                    val family = songCharts
                         .filter {
-                            it.mode == selectedChart.mode &&
-                                songGroupKey(it) == selectedSongKey
+                            it.mode == selectedChart.mode
                         }
                         .groupBy { it.difficulty }
                         .values
@@ -633,10 +634,9 @@ private fun IidxApp(
                         mode = browserMode,
                         onStyleToggle = {
                             val targetMode = if (browserMode == "SP") "DP" else "SP"
-                            val alternate = state.charts
+                            val alternate = songCharts
                                 .filter {
                                     it.mode == targetMode &&
-                                        songGroupKey(it) == selectedSongKey &&
                                         it.textageUrl != null
                                 }
                                 .maxWithOrNull(
@@ -651,10 +651,10 @@ private fun IidxApp(
                     )
                 } else if (selectedSong != null) {
                     val selectedSongKey = songGroupKey(selectedSong)
-                    val family = state.charts
+                    val songCharts = chartsBySongKey[selectedSongKey].orEmpty()
+                    val family = songCharts
                         .filter {
-                            it.mode == selectedSong.mode &&
-                                songGroupKey(it) == selectedSongKey
+                            it.mode == selectedSong.mode
                         }
                         .groupBy { it.difficulty }
                         .values
@@ -672,10 +672,9 @@ private fun IidxApp(
                         onBack = onBack,
                         onStyleToggle = {
                             val targetMode = if (browserMode == "SP") "DP" else "SP"
-                            val alternate = state.charts
+                            val alternate = songCharts
                                 .filter {
-                                    it.mode == targetMode &&
-                                        songGroupKey(it) == selectedSongKey
+                                    it.mode == targetMode
                                 }
                                 .maxWithOrNull(
                                     compareBy<IidxChart>({ it.textageUrl != null }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
