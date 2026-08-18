@@ -90,6 +90,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -1212,36 +1213,23 @@ private fun ChartDetailScreen(
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(
-                onClick = onBack,
-                modifier = Modifier.size(width = 64.dp, height = 32.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            Box(
+                modifier = Modifier
+                    .size(width = 64.dp, height = 32.dp)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
             ) {
-                Row(
-                    Modifier.fillMaxWidth().height(22.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Box(
-                        modifier = Modifier.size(22.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "〈",
-                            color = Purple,
-                            fontSize = 19.sp,
-                            lineHeight = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier.size(width = 36.dp, height = 22.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("返回", color = Purple, fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
+                Text(
+                    "〈返回",
+                    style = TextStyle(
+                        color = Purple,
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
+                )
             }
             Text("谱面浏览", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text("Style：", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
