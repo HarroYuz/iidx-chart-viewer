@@ -1,6 +1,6 @@
 # IIDX 谱面浏览器
 
-当前版本：0.4.1
+当前版本：0.4.2
 
 一个纯 Android 的 beatmania IIDX 谱面浏览与本地播放器应用，使用 Kotlin 和 Jetpack Compose 实现。
 

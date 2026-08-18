@@ -931,7 +931,7 @@ private fun UpdateSettingsScreen(
             ) {
                 Text("☰", color = Ink, fontSize = 24.sp)
             }
-            Text("自动检查更新", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("设置", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
         Column(
