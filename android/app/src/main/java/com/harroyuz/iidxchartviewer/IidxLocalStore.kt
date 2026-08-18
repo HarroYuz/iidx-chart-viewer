@@ -43,6 +43,12 @@ class IidxLocalStore(context: Context) {
                 for (index in 0 until array.length()) add(array.getJSONObject(index).toScore())
             }
         }.getOrDefault(emptyList())
+        val bjmMusic = runCatching {
+            val array = JSONArray(preferences.getString("bjm_music", "[]"))
+            buildList {
+                for (index in 0 until array.length()) add(array.getJSONObject(index).toBjmMusic())
+            }
+        }.getOrDefault(emptyList())
         val user = preferences.getString("bjm_user", null)?.let {
             runCatching {
                 val json = JSONObject(it)
@@ -52,6 +58,7 @@ class IidxLocalStore(context: Context) {
         return IidxAppState(
             charts = charts,
             bjmScores = scores,
+            bjmMusic = bjmMusic,
             bjmUser = user,
             bjmSyncedAt = preferences.getLong("bjm_synced_at", 0L).takeIf { it > 0L },
         )
@@ -60,6 +67,7 @@ class IidxLocalStore(context: Context) {
     fun save(state: IidxAppState) {
         writeCatalogFile(state.charts)
         val scores = JSONArray().apply { state.bjmScores.forEach { put(it.toJson()) } }
+        val bjmMusic = JSONArray().apply { state.bjmMusic.forEach { put(it.toJson()) } }
         val user = state.bjmUser?.let {
             JSONObject().apply {
                 put("id", it.id)
@@ -72,6 +80,7 @@ class IidxLocalStore(context: Context) {
             .putBoolean("textage_catalog_present", state.charts.isNotEmpty())
             .putStringSet("confirmed", state.charts.filter { it.confirmed }.map { it.id }.toSet())
             .putString("bjm_scores", scores.toString())
+            .putString("bjm_music", bjmMusic.toString())
             .putString("bjm_user", user)
             .putLong("bjm_synced_at", state.bjmSyncedAt ?: 0L)
             .apply()
@@ -448,4 +457,28 @@ private fun JSONObject.toScore() = BjmScore(
     exScore = optInt("ex_score"),
     option1 = optLong("option1"),
     option2 = optLong("option2"),
+)
+
+private fun BjmMusic.toJson() = JSONObject().apply {
+    put("music_id", musicId)
+    put("title", title)
+    put("plain_title", plainTitle)
+    put("genre", genre)
+    put("artist", artist)
+    put("version", version)
+    put("levels", JSONArray(levels))
+}
+
+private fun JSONObject.toBjmMusic() = BjmMusic(
+    musicId = optInt("music_id"),
+    title = optString("title"),
+    plainTitle = optString("plain_title"),
+    genre = optString("genre"),
+    artist = optString("artist"),
+    version = optInt("version"),
+    levels = optJSONArray("levels")?.let { array ->
+        buildList {
+            for (index in 0 until array.length()) add(array.optString(index))
+        }
+    } ?: emptyList(),
 )

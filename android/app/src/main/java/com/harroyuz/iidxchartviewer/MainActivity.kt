@@ -114,6 +114,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.Normalizer
 import java.util.Locale
 
 private val Ink = ComposeColor(0xFF171722)
@@ -149,6 +150,7 @@ class MainActivity : ComponentActivity() {
     private var textageProgress by mutableStateOf<TextageSyncProgress?>(null)
     private var textageError by mutableStateOf<String?>(null)
     private var chartLoading by mutableStateOf(false)
+    private var selectedSong by mutableStateOf<IidxChart?>(null)
     private var selectedChart by mutableStateOf<IidxChart?>(null)
     private var selectedChartData by mutableStateOf<TextageChartData?>(null)
     private var playerSettings by mutableStateOf(PlayerSettings())
@@ -200,6 +202,7 @@ class MainActivity : ComponentActivity() {
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
                     textageError = textageError,
+                    selectedSong = selectedSong,
                     selectedChart = selectedChart,
                     chartData = selectedChartData,
                     chartLoading = chartLoading,
@@ -228,7 +231,8 @@ class MainActivity : ComponentActivity() {
                     onDismissUpdate = { if (updateDownloadProgress == null && !updateInstalling) updateInfo = null },
                     onDownloadUpdate = ::downloadUpdate,
                     onOpenChart = ::openChart,
-                    onBack = ::closeChart,
+                    onOpenSong = ::openSong,
+                    onBack = ::handleBack,
                     onRequestExit = ::requestExit,
                     onRetryChart = { selectedChart?.let(::openChart) },
                     onPlayerSettingsChange = ::savePlayerSettings,
@@ -247,6 +251,16 @@ class MainActivity : ComponentActivity() {
                 val dailySyncDue = System.currentTimeMillis() - store.textageLastSyncAt() >= TEXTAGE_SYNC_INTERVAL_MS
                 if (needsBootstrap || dailySyncDue) {
                     refreshTextage()
+                }
+                if (loaded.bjmUser != null && loaded.bjmMusic.isEmpty()) {
+                    lifecycleScope.launch {
+                        val music = runCatching { withContext(Dispatchers.IO) { bjmClient.fetchMusicDatabase() } }
+                            .getOrDefault(emptyList())
+                        if (music.isNotEmpty()) {
+                            appState = appState.copy(bjmMusic = music)
+                            withContext(Dispatchers.IO) { store.save(appState) }
+                        }
+                    }
                 }
                 checkForUpdatesIfDue()
             }
@@ -333,8 +347,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 val result = bjmClient.fetchScores()
+                val music = runCatching { bjmClient.fetchMusicDatabase() }
+                    .getOrElse { appState.bjmMusic }
                 appState = appState.copy(
                     bjmScores = result.scores,
+                    bjmMusic = music,
                     bjmUser = result.user,
                     bjmSyncedAt = System.currentTimeMillis(),
                 )
@@ -432,10 +449,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun openSong(chart: IidxChart) {
+        selectedSong = chart
+        selectedChart = null
+        selectedChartData = null
+        chartLoading = false
+    }
+
     private fun closeChart() {
         selectedChart = null
         selectedChartData = null
         chartLoading = false
+    }
+
+    private fun closeSong() {
+        closeChart()
+        selectedSong = null
+    }
+
+    private fun handleBack() {
+        if (selectedChart != null) closeChart() else if (selectedSong != null) closeSong() else requestExit()
     }
 
     private fun requestExit() {
@@ -474,6 +507,7 @@ private fun IidxApp(
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
     textageError: String?,
+    selectedSong: IidxChart?,
     selectedChart: IidxChart?,
     chartData: TextageChartData?,
     chartLoading: Boolean,
@@ -498,6 +532,7 @@ private fun IidxApp(
     onDismissUpdate: () -> Unit,
     onDownloadUpdate: (GithubReleaseInfo) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
+    onOpenSong: (IidxChart) -> Unit,
     onBack: () -> Unit,
     onRequestExit: () -> Unit,
     onRetryChart: () -> Unit,
@@ -537,10 +572,11 @@ private fun IidxApp(
                     onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
                     onClearChartCache = onClearChartCache,
                     onOpenChart = onOpenChart,
-                    showingDetail = selectedChart != null,
+                    onOpenSong = onOpenSong,
+                    showingDetail = selectedSong != null || selectedChart != null,
                     onBack = onBack,
                     onRequestExit = onRequestExit,
-                    modifier = Modifier.alpha(if (selectedChart == null) 1f else 0f),
+                    modifier = Modifier.alpha(if (selectedSong == null && selectedChart == null) 1f else 0f),
                 )
                 if (selectedChart != null) {
                     val selectedSongKey = chartSongKey(selectedChart)
@@ -583,6 +619,45 @@ private fun IidxApp(
                         onOpenChart = onOpenChart,
                         onPlayerSettingsChange = onPlayerSettingsChange,
                     )
+                } else if (selectedSong != null) {
+                    val selectedSongKey = chartSongKey(selectedSong)
+                    val family = state.charts
+                        .filter {
+                            it.mode == selectedSong.mode &&
+                                chartSongKey(it) == selectedSongKey
+                        }
+                        .groupBy { it.difficulty }
+                        .values
+                        .mapNotNull { sameDifficulty ->
+                            sameDifficulty.maxWithOrNull(
+                                compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                            )
+                        }
+                        .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
+                    SongDetailScreen(
+                        song = selectedSong,
+                        charts = family,
+                        bjmMusic = findBjmMusic(selectedSong, state.bjmMusic),
+                        scores = state.bjmScores,
+                        mode = browserMode,
+                        onBack = onBack,
+                        onStyleToggle = {
+                            val targetMode = if (browserMode == "SP") "DP" else "SP"
+                            val alternate = state.charts
+                                .filter {
+                                    it.mode == targetMode &&
+                                        chartSongKey(it) == selectedSongKey
+                                }
+                                .maxWithOrNull(
+                                    compareBy<IidxChart>({ it.textageUrl != null }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
+                                )
+                            if (alternate != null) {
+                                browserMode = targetMode
+                                onOpenSong(alternate)
+                            }
+                        },
+                        onOpenChart = onOpenChart,
+                    )
                 }
             }
             if (message != null) ToastCard(message, onDismissMessage, Modifier.align(Alignment.BottomCenter))
@@ -620,6 +695,7 @@ private fun ChartBrowserScreen(
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onClearChartCache: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
+    onOpenSong: (IidxChart) -> Unit,
     showingDetail: Boolean,
     onBack: () -> Unit,
     onRequestExit: () -> Unit,
@@ -662,7 +738,7 @@ private fun ChartBrowserScreen(
                     )
                     Column(Modifier.weight(1f)) {
                         NavigationDrawerItem(
-                            label = { Text("谱面列表") },
+                            label = { Text("曲目列表") },
                             selected = !settingsPageVisible,
                             onClick = {
                                 closeDrawer()
@@ -845,7 +921,7 @@ private fun ChartBrowserScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("☰", color = Ink, fontSize = 24.sp) }
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text("谱面列表", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("曲目列表", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
                     Text("Style：", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(5.dp))
@@ -953,7 +1029,7 @@ private fun ChartBrowserScreen(
             Spacer(Modifier.height(6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                 items(songs, key = { it.key }) { song ->
-                    SongGroupRow(song, onOpenChart, Modifier.padding(horizontal = 18.dp, vertical = 5.dp))
+                    SongGroupRow(song, onOpenSong, onOpenChart, Modifier.padding(horizontal = 18.dp, vertical = 5.dp))
                 }
                 item { Spacer(Modifier.height(18.dp)) }
             }
@@ -1265,10 +1341,17 @@ private fun TextageSyncBanner(progress: TextageSyncProgress) {
 }
 
 @Composable
-private fun SongGroupRow(song: SongGroup, onOpenChart: (IidxChart) -> Unit, modifier: Modifier = Modifier) {
+private fun SongGroupRow(
+    song: SongGroup,
+    onOpenSong: (IidxChart) -> Unit,
+    onOpenChart: (IidxChart) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val representative = song.charts.firstOrNull()
     Column(
         modifier.fillMaxWidth()
             .border(1.dp, ComposeColor(0xFF292B42), RoundedCornerShape(12.dp))
+            .clickable(enabled = representative != null) { representative?.let(onOpenSong) }
             .padding(horizontal = 12.dp, vertical = 9.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -1361,6 +1444,200 @@ private fun difficultyColor(value: String): ComposeColor = when (value) {
     "L" -> ComposeColor(0xFF5635B8)
     else -> Muted
 }
+
+@Composable
+private fun SongDetailScreen(
+    song: IidxChart,
+    charts: List<IidxChart>,
+    bjmMusic: BjmMusic?,
+    scores: List<BjmScore>,
+    mode: String,
+    onBack: () -> Unit,
+    onStyleToggle: () -> Unit,
+    onOpenChart: (IidxChart) -> Unit,
+) {
+    val scoreByKey = remember(scores) { scores.associateBy { it.key } }
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(width = 64.dp, height = 32.dp).clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "〈返回",
+                    style = TextStyle(
+                        color = Purple,
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
+                )
+            }
+            Text("曲目信息", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("Style：", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(4.dp))
+            OutlinedButton(
+                onClick = onStyleToggle,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier.height(34.dp),
+            ) { Text(mode, color = Purple, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp)
+                Spacer(Modifier.height(3.dp))
+                AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
+                if (song.subtitle.isNotBlank()) {
+                    AutoScrollingText(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
+                }
+                Spacer(Modifier.height(4.dp))
+                AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                DetailStat("版本 ", song.version.ifBlank { "—" })
+                DetailStat("BPM ", song.bpm.ifBlank { "—" })
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(charts, key = { it.id }) { chart ->
+                DifficultyScoreCard(
+                    chart = chart,
+                    score = bjmMusic?.let { music ->
+                        scoreByKey["${music.musicId}:${if (mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"]
+                    },
+                    onOpenChart = onOpenChart,
+                )
+            }
+            item { Spacer(Modifier.height(18.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun DifficultyScoreCard(
+    chart: IidxChart,
+    score: BjmScore?,
+    onOpenChart: (IidxChart) -> Unit,
+) {
+    val accent = difficultyColor(chart.difficulty)
+    val shape = RoundedCornerShape(10.dp)
+    val available = chart.textageUrl != null
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(shape)
+            .background(if (available) accent.copy(alpha = .08f) else Background)
+            .border(1.dp, accent.copy(alpha = if (available) .65f else .3f), shape)
+            .clickable(enabled = available) { onOpenChart(chart) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "${difficultyName(chart.difficulty)} ${chart.level}",
+            color = accent,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(112.dp),
+        )
+        Text(
+            "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
+            color = NormalBlue,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+        )
+        Column(horizontalAlignment = Alignment.End) {
+            if (score == null) {
+                Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Text(
+                    "${clearFlagShortName(score.clearFlag)} ${score.exScore}(${rankSummary(score.exScore, chart.notes)})",
+                    color = Ink,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                if (score.missCount >= 0) {
+                    Text("MISS COUNT ${score.missCount}", color = Muted, fontSize = 9.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun difficultyIndex(value: String): Int = when (value) {
+    "B" -> 0
+    "N" -> 1
+    "H" -> 2
+    "A" -> 3
+    "L" -> 4
+    else -> -1
+}.coerceAtLeast(0)
+
+private fun clearFlagShortName(value: Int): String = when (value) {
+    1 -> "FAILED"
+    2 -> "A-CLEAR"
+    3 -> "E-CLEAR"
+    4 -> "CLEAR"
+    5 -> "H-CLEAR"
+    6 -> "EX-HARD"
+    7 -> "FC"
+    else -> "NO PLAY"
+}
+
+private fun rankSummary(exScore: Int, noteCount: Int): String {
+    if (noteCount <= 0) return "—"
+    val thresholds = (1..8).map { step -> kotlin.math.ceil(noteCount * 2.0 * step / 9.0).toInt() }
+    val rankIndex = thresholds.indexOfLast { exScore >= it }
+    val rankNames = listOf("F", "E", "D", "C", "B", "A", "AA", "AAA")
+    val currentThreshold = thresholds.getOrElse(rankIndex) { 0 }
+    val rankPlus = exScore - currentThreshold
+    val nextIndex = rankIndex + 1
+    val nextThreshold = thresholds.getOrNull(nextIndex)
+    if (nextThreshold == null) return "AAA + $rankPlus"
+    val nextMinus = nextThreshold - exScore
+    return if (rankIndex < 0 || nextMinus < rankPlus) {
+        "${rankNames.getOrElse(nextIndex) { "AAA" }} - $nextMinus"
+    } else {
+        "${rankNames.getOrElse(rankIndex) { "F" }} + $rankPlus"
+    }
+}
+
+private fun findBjmMusic(chart: IidxChart, music: List<BjmMusic>): BjmMusic? {
+    if (music.isEmpty()) return null
+    val titleKey = normalizeMusicTitle(chart.title)
+    val candidates = music.filter { candidate ->
+        titleKey.isNotBlank() && setOf(candidate.title, candidate.plainTitle)
+            .map(::normalizeMusicTitle)
+            .any { it == titleKey }
+    }
+    if (candidates.isEmpty()) return null
+    val chartVersion = chart.textageUrl?.let(::textageVersionIndex)
+    return candidates.maxWithOrNull(
+        compareBy<BjmMusic>(
+            { it.level(chart.mode, chart.difficulty) == chart.level },
+            { chartVersion != null && it.version == chartVersion },
+            { it.version },
+        ),
+    )
+}
+
+private fun normalizeMusicTitle(value: String): String =
+    Normalizer.normalize(value.trim(), Normalizer.Form.NFKC)
+        .lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]"), "")
 
 @Composable
 private fun ChartDetailScreen(

@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets
 
 class BjmClient {
     private val origin = "https://u.bjmania.com"
+    private val musicDatabaseOrigin = "https://assets.bjmania.com"
     private val cookieManager = CookieManager.getInstance()
 
     suspend fun fetchScores(): BjmSyncResult = withContext(Dispatchers.IO) {
@@ -22,6 +23,24 @@ class BjmClient {
     }
 
     fun probeAuthMe(): BjmUser? = authMe()
+
+    suspend fun fetchMusicDatabase(): List<BjmMusic> = withContext(Dispatchers.IO) {
+        val version = runCatching {
+            val response = requestPublic("$musicDatabaseOrigin/mdb/ver.json")
+            val json = JSONObject(response.toString(StandardCharsets.UTF_8))
+            val versions = json.optJSONObject("LDJ")
+                ?.optJSONObject("mdb")
+                ?.keys()
+                ?.asSequence()
+                ?.mapNotNull { it.toIntOrNull() }
+                ?.toList()
+                .orEmpty()
+            versions.maxOrNull()?.toString()
+        }.getOrNull() ?: "33"
+        BjmMusicProto.decode(requestPublic("$musicDatabaseOrigin/mdb/LDJ_mdb_$version.bin"))
+            .takeIf { it.isNotEmpty() }
+            ?: throw BjmException("BJM 音乐数据库为空")
+    }
 
     private fun authMe(): BjmUser? {
         val response = request("/api/auth/me", "GET", null, "application/json")
@@ -81,6 +100,25 @@ class BjmClient {
         }
     }
 
+    private fun requestPublic(url: String): ByteArray {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            useCaches = false
+            doInput = true
+            setRequestProperty("Accept", "application/octet-stream, application/json")
+        }
+        return try {
+            val code = connection.responseCode
+            val stream = if (code in 200..399) connection.inputStream else connection.errorStream
+            if (code !in 200..299) throw BjmException("BJM 曲目数据库请求失败 ($code)")
+            stream?.use { it.readBytes() } ?: ByteArray(0)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun extractCookie(header: String, name: String): String? = header
         .split(';')
         .asSequence()
@@ -100,7 +138,7 @@ data class BjmSyncResult(
     val status: Int,
 )
 
-class BjmException(message: String) : Exception(message)
+class BjmException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 private data class HttpResponse(val code: Int, val body: ByteArray)
 
@@ -205,11 +243,113 @@ private object IidxScoreProto {
             when (wireType) {
                 0 -> readVarint()
                 1 -> offset += 8
-                2 -> offset += readVarint().toInt()
+                2 -> {
+                    val length = readVarint().toInt()
+                    offset += length
+                }
                 5 -> offset += 4
                 else -> throw BjmException("不支持的 BJM protobuf 类型：$wireType")
             }
             if (offset > bytes.size) throw BjmException("BJM protobuf 字段越界")
+        }
+    }
+}
+
+private object BjmMusicProto {
+    fun decode(bytes: ByteArray): List<BjmMusic> {
+        val reader = MusicProtoReader(bytes)
+        val result = mutableListOf<BjmMusic>()
+        var recordIndex = 0
+        while (!reader.isAtEnd()) {
+            val tag = reader.readVarint()
+            val field = (tag shr 3).toInt()
+            val wireType = (tag and 7).toInt()
+            if (field == 1 && wireType == 2) {
+                try {
+                    result += decodeMusic(reader.readBytes())
+                } catch (error: BjmException) {
+                    throw BjmException("BJM 音乐数据库第 ${recordIndex + 1} 条记录解析失败：${error.message}", error)
+                }
+                recordIndex++
+            } else {
+                reader.skip(wireType)
+            }
+        }
+        return result.filter { it.musicId > 0 && it.title.isNotBlank() }
+    }
+
+    private fun decodeMusic(bytes: ByteArray): BjmMusic {
+        val reader = MusicProtoReader(bytes)
+        var musicId = 0
+        var title = ""
+        var plainTitle = ""
+        var genre = ""
+        var artist = ""
+        var version = 0
+        val levels = MutableList(10) { "" }
+        while (!reader.isAtEnd()) {
+            val tag = reader.readVarint()
+            val field = (tag shr 3).toInt()
+            val wireType = (tag and 7).toInt()
+            try {
+                when {
+                    field == 1 && wireType == 0 -> musicId = reader.readVarint().toInt()
+                    field == 2 && wireType == 2 -> title = reader.readString()
+                    field == 3 && wireType == 2 -> plainTitle = reader.readString()
+                    field == 4 && wireType == 2 -> genre = reader.readString()
+                    field == 5 && wireType == 2 -> artist = reader.readString()
+                    field == 12 && wireType == 0 -> version = reader.readVarint().toInt()
+                    field in 16..25 && wireType == 2 -> levels[field - 16] = reader.readString()
+                    field in 26..35 && wireType == 2 -> reader.readString()
+                    else -> reader.skip(wireType)
+                }
+            } catch (error: BjmException) {
+                throw BjmException("音乐字段 field=$field wire=$wireType position=${reader.position()}", error)
+            }
+        }
+        return BjmMusic(musicId, title, plainTitle, genre, artist, version, levels)
+    }
+
+    private class MusicProtoReader(private val bytes: ByteArray) {
+        private var offset = 0
+
+        fun isAtEnd(): Boolean = offset >= bytes.size
+
+        fun position(): Int = offset
+
+        fun readVarint(): Long {
+            var value = 0L
+            var shift = 0
+            while (offset < bytes.size) {
+                val current = bytes[offset++].toInt() and 0xff
+                value = value or ((current and 0x7f).toLong() shl shift)
+                if (current and 0x80 == 0) return value
+                shift += 7
+                if (shift > 63) throw BjmException("BJM 音乐数据库字段过长")
+            }
+            throw BjmException("BJM 音乐数据库数据不完整（位置 $offset/${bytes.size}）")
+        }
+
+        fun readBytes(): ByteArray {
+            val length = readVarint().toInt()
+            if (length < 0 || offset + length > bytes.size) throw BjmException("BJM 音乐数据库消息不完整")
+            return bytes.copyOfRange(offset, offset + length).also { offset += length }
+        }
+
+        fun readString(): String = readBytes().toString(StandardCharsets.UTF_8)
+
+        fun skip(wireType: Int) {
+            when (wireType) {
+                0 -> readVarint()
+                1 -> offset += 8
+                2 -> {
+                    val length = readVarint().toInt()
+                    offset += length
+                }
+                5 -> offset += 4
+                else -> throw BjmException("不支持的 BJM 音乐数据库字段类型：$wireType")
+            }
+            if (offset > bytes.size) throw BjmException("BJM 音乐数据库字段越界")
         }
     }
 }
