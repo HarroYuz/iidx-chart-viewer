@@ -1212,9 +1212,9 @@ private fun ChartDetailScreen(
             TextButton(onClick = onBack) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "‹",
+                        "←",
                         color = Purple,
-                        fontSize = 20.sp,
+                        fontSize = 21.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.offset(y = (-1).dp),
                     )
@@ -1356,9 +1356,9 @@ private fun PlayerConfigBox(
             Text(if (expanded) "播放器配置" else summary, color = if (expanded) Ink else Muted, fontSize = 11.sp)
             Spacer(Modifier.weight(1f))
             if (expanded) {
-                Text("▼", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(4.dp))
                 Text("收起", color = Muted, fontSize = 10.sp)
+                Spacer(Modifier.width(4.dp))
+                Text("▼", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             } else {
                 Text("设置", color = Muted, fontSize = 10.sp)
                 Spacer(Modifier.width(4.dp))
@@ -1860,6 +1860,7 @@ private fun ChartCanvas(
     // Hi-Speed 1 is four times the old visual baseline.
     val pixelsPerBeat = 16f * speed * 4f
     val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
+    val labelPadding = with(LocalDensity.current) { 4.dp.toPx() }
     val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
     val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
@@ -1939,11 +1940,23 @@ private fun ChartCanvas(
                 strokeWidth = 2f,
             )
         }
-        val infoCenterX = if (isSp) {
-            (if (side == "1P") laneWidths.take(8).sum() + .75f else .75f) * unit
+        val infoStartX = if (isSp) {
+            if (side == "1P") laneWidths.take(8).sum() * unit else 0f
         } else {
-            (dpLeftWidth + dpGapUnits / 2f) * unit
+            dpLeftWidth * unit
         }
+        val infoEndX = if (isSp) {
+            infoStartX + 1.5f * unit
+        } else {
+            infoStartX + dpGapUnits * unit
+        }
+        val infoOnLeft = isSp && side == "2P"
+        val measureX = if (infoOnLeft) infoEndX - labelPadding else infoStartX + labelPadding
+        val measureAlign = if (infoOnLeft) Paint.Align.RIGHT else Paint.Align.LEFT
+        val bpmX = if (infoOnLeft) infoStartX + labelPadding else infoEndX - labelPadding
+        val bpmAlign = if (infoOnLeft) Paint.Align.LEFT else Paint.Align.RIGHT
+        val measureBaseline = { y: Float -> (y - 4f).coerceAtLeast(labelTextSize) }
+        val bpmBaseline = { y: Float -> (y - 4f).coerceAtLeast(labelTextSize) }
         if (showBarLines || showMeasureNumbers) {
             val firstMeasure = (
                 data.measureAt(currentBeat - size.height / pixelsPerBeat) - 2
@@ -1969,12 +1982,12 @@ private fun ChartCanvas(
                                 color = PlayerMeasureText.toArgb()
                                 textSize = labelTextSize
                                 typeface = Typeface.DEFAULT_BOLD
-                                textAlign = Paint.Align.CENTER
+                                textAlign = measureAlign
                             }
                             canvas.nativeCanvas.drawText(
                                 measure.toString(),
-                                infoCenterX,
-                                (y - 4f).coerceAtLeast(labelTextSize),
+                                measureX,
+                                measureBaseline(y),
                                 paint,
                             )
                         }
@@ -1997,12 +2010,12 @@ private fun ChartCanvas(
                             color = PlayerBpmGreen.toArgb()
                             textSize = labelTextSize
                             typeface = Typeface.DEFAULT_BOLD
-                            textAlign = Paint.Align.CENTER
+                            textAlign = bpmAlign
                         }
                         canvas.nativeCanvas.drawText(
-                            "BPM ${formatPlayerBpm(change.bpm)}",
-                            infoCenterX,
-                            (y - 4f).coerceAtLeast(labelTextSize),
+                            formatPlayerBpm(change.bpm),
+                            bpmX,
+                            bpmBaseline(y),
                             paint,
                         )
                     }
