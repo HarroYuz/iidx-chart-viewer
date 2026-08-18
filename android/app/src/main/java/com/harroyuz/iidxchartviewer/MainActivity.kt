@@ -884,6 +884,7 @@ private fun IidxApp(
                     ChartDetailScreen(
                         chart = selectedChart,
                         siblingCharts = family,
+                        bjmIndex = bjmIndex,
                         chartData = chartData,
                         loading = chartLoading,
                         playerSettings = playerSettings,
@@ -2294,6 +2295,7 @@ private fun StrokedText(
 private fun ChartDetailScreen(
     chart: IidxChart,
     siblingCharts: List<IidxChart>,
+    bjmIndex: BjmIndex,
     chartData: TextageChartData?,
     loading: Boolean,
     playerSettings: PlayerSettings,
@@ -2363,13 +2365,20 @@ private fun ChartDetailScreen(
                 letterSpacing = .8.sp,
             )
             Spacer(Modifier.height(7.dp))
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                siblingCharts.forEach { sibling ->
-                    DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    siblingCharts.forEach { sibling ->
+                        DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id)
+                    }
                 }
+                Spacer(Modifier.width(10.dp))
+                ChartScoreSummary(
+                    score = scoreForChart(chart, bjmIndex),
+                    noteCount = chartData?.chart?.notes ?: chart.notes,
+                )
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -2390,6 +2399,54 @@ private fun ChartDetailScreen(
                 onSettingsChange = onPlayerSettingsChange,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
+        }
+    }
+}
+
+@Composable
+private fun ChartScoreSummary(
+    score: BjmScore?,
+    noteCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, horizontalAlignment = Alignment.End) {
+        if (score == null) {
+            Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StrokedText(
+                    text = clearFlagDetailName(score.clearFlag),
+                    fillColor = clearFlagColor(score.clearFlag),
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                score.missCount.takeIf { it >= 0 }?.let {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(" (", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        Text(it.toString(), color = NormalBlue, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        Text(" BP)", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(score.exScore.toString(), color = NormalBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(4.dp))
+                Text("(", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                StrokedText(
+                    text = scoreRankName(score.exScore, noteCount),
+                    fillColor = ComposeColor.White,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    strokeWidth = 1.3f,
+                )
+                rankDeltaText(score.exScore, noteCount)
+                    .takeIf { it.isNotBlank() }
+                    ?.let {
+                        Spacer(Modifier.width(3.dp))
+                        Text(it, color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                Text(")", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
