@@ -1918,6 +1918,12 @@ private fun scoreRankName(exScore: Int, noteCount: Int): String =
 private fun rankDeltaText(exScore: Int, noteCount: Int): String =
     rankSummary(exScore, noteCount).substringAfter(' ', "").trim()
 
+private fun rankDeltaColor(value: String): ComposeColor = when {
+    value.trimStart().startsWith("-") -> ClearHard
+    value.trimStart().startsWith("+") -> NormalBlue
+    else -> Muted
+}
+
 @Composable
 private fun SongDetailScreen(
     song: IidxChart,
@@ -2067,7 +2073,7 @@ private fun DifficultyScoreCard(
                     .takeIf { it.isNotBlank() }
                     ?.let {
                         Spacer(Modifier.width(3.dp))
-                        Text(it, color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        Text(it, color = rankDeltaColor(it), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                     }
                 Text(")", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
             }
@@ -2452,7 +2458,7 @@ private fun ChartScoreSummary(
                     .takeIf { it.isNotBlank() }
                     ?.let {
                         Spacer(Modifier.width(3.dp))
-                        Text(it, color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        Text(it, color = rankDeltaColor(it), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                     }
                 Text(")", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
             }
