@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1236,14 +1235,7 @@ private fun ChartDetailScreen(
                         modifier = Modifier.size(width = 36.dp, height = 22.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            "返回",
-                            color = Purple,
-                            fontSize = 18.sp,
-                            lineHeight = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.offset(x = (-1).dp, y = (-1).dp),
-                        )
+                        Text("返回", color = Purple, fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
