@@ -31,10 +31,11 @@ class TextageClientTest {
 
     @Test
     fun parsesTextageSourceLabelAndSubstreamUrl() = runBlocking {
-        val versions = (0 until 36).joinToString(",") { "\"v$it\"" } + ",\"substream\""
+        val versions = (0 until 36).joinToString(",") { "\"v$it\"" }
         val source = """
+            SS=36;
             titletbl={
-                'thearth8':[36,1,1,"TRANCE","L.E.D. LIGHT","THE EARTH LIGHT"],
+                'thearth8':[SS,1,1,"TRANCE","L.E.D. LIGHT","THE EARTH LIGHT"],
             };
             datatbl={
                 'thearth8':[0,0,398,530,725,0,0,456,718,581,0,"145"],
@@ -43,6 +44,7 @@ class TextageClientTest {
                 'thearth8':[0,0,0,0,0,4,7,7,7,A,3,0,0,0,0,5,7,A,7,7,7,0,0,"(CS8th)"],
             };
             vertbl=[$versions];
+            vertbl[36]="substream";
         """.trimIndent()
 
         val charts = TextageParser.parseCatalog(source) { _, _, _ -> }

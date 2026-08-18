@@ -10,7 +10,7 @@ class IidxLocalStore(context: Context) {
     private companion object {
         const val CHART_CACHE_VERSION = 7
         const val CATALOG_HEADER = "#iidx-catalog-v3"
-        const val TEXTAGE_CATALOG_PARSER_VERSION = 3
+        const val TEXTAGE_CATALOG_PARSER_VERSION = 4
     }
 
     private val preferences = context.getSharedPreferences("iidx-local-state", Context.MODE_PRIVATE)

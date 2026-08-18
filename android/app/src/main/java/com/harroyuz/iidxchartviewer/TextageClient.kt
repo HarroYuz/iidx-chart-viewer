@@ -114,9 +114,9 @@ internal object TextageParser {
     )
 
     private data class JsValue(val text: String, val quoted: Boolean) {
-        fun intValue(): Int? {
+        fun intValue(constants: Map<String, Int> = emptyMap()): Int? {
             val normalized = text.trim()
-            return normalized.toIntOrNull() ?: normalized.toIntOrNull(16)
+            return normalized.toIntOrNull() ?: normalized.toIntOrNull(16) ?: constants[normalized]
         }
     }
 
@@ -138,6 +138,7 @@ internal object TextageParser {
     ): List<IidxChart> {
         val titleEntries = parseObjectEntries(source, "titletbl")
         val noteEntries = parseObjectEntries(source, "datatbl").associateBy { it.first }
+        val constants = parseNumericConstants(source)
         val arcadeLevelEntries = parseObjectEntries(source, "actbl")
         val sourceLabels = arcadeLevelEntries.associate { (key, values) ->
             key to values.getOrNull(TEXTAGE_SOURCE_LABEL_INDEX)?.text.orEmpty().let(::cleanJsText)
@@ -162,7 +163,7 @@ internal object TextageParser {
             val subtitle = values.getOrNull(6)?.text.orEmpty().let(::cleanJsText)
             val genre = values.getOrNull(3)?.text.orEmpty().let(::cleanJsText)
             val composer = values.getOrNull(4)?.text.orEmpty().let(::cleanJsText)
-            val versionIndex = values.getOrNull(0)?.intValue() ?: 0
+            val versionIndex = values.getOrNull(0)?.intValue(constants) ?: 0
             val version = versions.getOrNull(versionIndex)?.ifBlank { null } ?: "Textage"
             val notes = noteEntries[key]?.second.orEmpty()
             val levels = levelEntries[key].orEmpty()
@@ -179,9 +180,9 @@ internal object TextageParser {
             }
             val chartBaseUrl = "https://textage.cc/score/$textageVersionDirectory/${key}.html"
             chartSlots.forEach { slot ->
-                val level = levels.getOrNull(slot.levelIndex)?.intValue() ?: 0
+                val level = levels.getOrNull(slot.levelIndex)?.intValue(constants) ?: 0
                 if (level <= 0) return@forEach
-                val noteCount = notes.getOrNull(slot.dataIndex)?.intValue() ?: 0
+                val noteCount = notes.getOrNull(slot.dataIndex)?.intValue(constants) ?: 0
                 result += IidxChart(
                     id = "textage-${slug(key)}-${slot.mode.lowercase(Locale.ROOT)}${slot.code.lowercase(Locale.ROOT)}",
                     title = title,
@@ -238,8 +239,26 @@ internal object TextageParser {
         val openIndex = source.indexOf('[', marker.range.first)
         val closeIndex = balancedEnd(source, openIndex, '[', ']')
         if (openIndex < 0 || closeIndex <= openIndex) return emptyList()
-        return parseJsValues(source.substring(openIndex + 1, closeIndex)).map { it.text }
+        val result = parseJsValues(source.substring(openIndex + 1, closeIndex)).map { it.text }.toMutableList()
+        val indexedAssignment = Regex(
+            "(?s)\\b${Regex.escape(variableName)}\\s*\\[\\s*(\\d+)\\s*]\\s*=\\s*([^;]+);",
+        )
+        indexedAssignment.findAll(source).forEach { assignment ->
+            val index = assignment.groupValues[1].toIntOrNull() ?: return@forEach
+            val value = parseJsValues(assignment.groupValues[2]).firstOrNull()?.text ?: return@forEach
+            while (result.size <= index) result += ""
+            result[index] = value
+        }
+        return result
     }
+
+    private fun parseNumericConstants(source: String): Map<String, Int> =
+        Regex("(?m)\\b([A-Za-z_$][A-Za-z0-9_$]*)\\s*=\\s*(\\d+)\\s*;")
+            .findAll(source)
+            .mapNotNull { match ->
+                match.groupValues[2].toIntOrNull()?.let { match.groupValues[1] to it }
+            }
+            .toMap()
 
     private fun parseObjectBody(body: String): List<Pair<String, List<JsValue>>> {
         val result = ArrayList<Pair<String, List<JsValue>>>()
