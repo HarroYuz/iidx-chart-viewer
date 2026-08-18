@@ -17,7 +17,13 @@
 ## 构建
 
 ```bash
-/Users/jhhuang/code/stock-tracer/gradlew -p android :app:testDebugUnitTest :app:assembleDebug
+./gradlew -p android :app:testDebugUnitTest :app:assembleDebug
+```
+
+仓库已包含 Gradle Wrapper，不需要另外安装 Gradle。若本机已经缓存了所需依赖，也可以使用 `--offline`：
+
+```bash
+./gradlew --offline -p android :app:testDebugUnitTest :app:assembleDebug
 ```
 
 Debug APK 输出在：

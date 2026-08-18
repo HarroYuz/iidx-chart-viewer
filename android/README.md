@@ -13,8 +13,9 @@
 ## 构建
 
 ```text
-ANDROID_SDK_ROOT=/Users/jhhuang/Library/Android/sdk \
-  /Users/jhhuang/code/stock-tracer/gradlew -p android :app:assembleDebug
+./gradlew -p android :app:assembleDebug
 ```
 
-输出：`app/build/outputs/apk/debug/app-debug.apk`
+请在仓库根目录执行上面的命令。仓库已包含 Gradle Wrapper；如果 Gradle 和依赖已经缓存，也可以加上 `--offline` 参数。
+
+输出：`android/app/build/outputs/apk/debug/app-debug.apk`
