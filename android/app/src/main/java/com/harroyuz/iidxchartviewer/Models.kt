@@ -165,6 +165,17 @@ data class BjmIndex(
     val built: Boolean = false,
 )
 
+data class IidxSongGroup(
+    val key: String,
+    val title: String,
+    val subtitle: String = "",
+    val genre: String = "",
+    val composer: String = "",
+    val version: String = "",
+    val sourceLabel: String = "",
+    val chartIds: List<String> = emptyList(),
+)
+
 data class BjmUser(
     val id: String,
     val name: String,
@@ -173,6 +184,7 @@ data class BjmUser(
 
 data class IidxAppState(
     val charts: List<IidxChart> = emptyList(),
+    val songGroups: List<IidxSongGroup> = emptyList(),
     val bjmScores: List<BjmScore> = emptyList(),
     val bjmMusic: List<BjmMusic> = emptyList(),
     val bjmUser: BjmUser? = null,

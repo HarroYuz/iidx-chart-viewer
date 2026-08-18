@@ -12,6 +12,7 @@ class IidxLocalStore(context: Context) {
         const val CATALOG_HEADER = "#iidx-catalog-v3"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 4
         const val BJM_INDEX_VERSION = 1
+        const val SONG_GROUPS_VERSION = 1
     }
 
     private val preferences = context.getSharedPreferences("iidx-local-state", Context.MODE_PRIVATE)
@@ -50,6 +51,16 @@ class IidxLocalStore(context: Context) {
                 for (index in 0 until array.length()) add(array.getJSONObject(index).toBjmMusic())
             }
         }.getOrDefault(emptyList())
+        val songGroups = runCatching {
+            if (preferences.getInt("song_groups_version", 0) != SONG_GROUPS_VERSION) {
+                emptyList()
+            } else {
+                val array = JSONArray(preferences.getString("song_groups", "[]"))
+                buildList {
+                    for (index in 0 until array.length()) add(array.getJSONObject(index).toSongGroup())
+                }
+            }
+        }.getOrDefault(emptyList())
         val user = preferences.getString("bjm_user", null)?.let {
             runCatching {
                 val json = JSONObject(it)
@@ -58,6 +69,7 @@ class IidxLocalStore(context: Context) {
         }
         return IidxAppState(
             charts = charts,
+            songGroups = songGroups,
             bjmScores = scores,
             bjmMusic = bjmMusic,
             bjmUser = user,
@@ -69,6 +81,7 @@ class IidxLocalStore(context: Context) {
         writeCatalogFile(state.charts)
         val scores = JSONArray().apply { state.bjmScores.forEach { put(it.toJson()) } }
         val bjmMusic = JSONArray().apply { state.bjmMusic.forEach { put(it.toJson()) } }
+        val songGroups = JSONArray().apply { state.songGroups.forEach { put(it.toJson()) } }
         val user = state.bjmUser?.let {
             JSONObject().apply {
                 put("id", it.id)
@@ -80,6 +93,8 @@ class IidxLocalStore(context: Context) {
             .remove("charts")
             .putBoolean("textage_catalog_present", state.charts.isNotEmpty())
             .putStringSet("confirmed", state.charts.filter { it.confirmed }.map { it.id }.toSet())
+            .putInt("song_groups_version", SONG_GROUPS_VERSION)
+            .putString("song_groups", songGroups.toString())
             .putString("bjm_scores", scores.toString())
             .putString("bjm_music", bjmMusic.toString())
             .putString("bjm_user", user)
@@ -504,6 +519,32 @@ private fun JSONObject.toChart(): IidxChart {
         ?.normalizeTextageUrl(version),
     )
 }
+
+private fun IidxSongGroup.toJson() = JSONObject().apply {
+    put("key", key)
+    put("title", title)
+    put("subtitle", subtitle)
+    put("genre", genre)
+    put("composer", composer)
+    put("version", version)
+    put("source_label", sourceLabel)
+    put("chart_ids", JSONArray(chartIds))
+}
+
+private fun JSONObject.toSongGroup(): IidxSongGroup = IidxSongGroup(
+    key = optString("key"),
+    title = optString("title"),
+    subtitle = optString("subtitle"),
+    genre = optString("genre"),
+    composer = optString("composer"),
+    version = optString("version"),
+    sourceLabel = optString("source_label"),
+    chartIds = optJSONArray("chart_ids")?.let { array ->
+        buildList {
+            for (index in 0 until array.length()) add(array.optString(index))
+        }
+    } ?: emptyList(),
+)
 
 private fun String.normalizeTextageUrl(version: String): String =
     if (version.equals("substream", ignoreCase = true)) {

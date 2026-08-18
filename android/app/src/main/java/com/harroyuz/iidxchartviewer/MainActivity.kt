@@ -145,6 +145,7 @@ private val PlayerRed = ComposeColor(0xFFFF1D2E)
 private val PlayerSkyBlue = ComposeColor(0xFF28A9E0)
 private val PlayerBpmGreen = ComposeColor(0xFF63D38A)
 private val PlayerMeasureText = ComposeColor(0xFFB7BAC6)
+private val MusicTitleFilterRegex = Regex("[^\\p{L}\\p{N}]")
 private const val TEXTAGE_SYNC_INTERVAL_MS = 24L * 60L * 60L * 1000L
 private const val UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
@@ -283,11 +284,33 @@ class MainActivity : ComponentActivity() {
                     localDataProgress = .08f
                     localDataStage = "正在读取本地曲目"
                 }
-                val loaded = store.load()
+                val loadedFromDisk = store.load()
                 withContext(Dispatchers.Main) {
-                    appState = loaded
+                    appState = loadedFromDisk
                     localDataProgress = .45f
-                    localDataStage = "正在读取用户成绩索引"
+                    localDataStage = if (
+                        loadedFromDisk.charts.isNotEmpty() && loadedFromDisk.songGroups.isEmpty()
+                    ) {
+                        "正在构建本地曲目组"
+                    } else {
+                        "正在读取用户成绩索引"
+                    }
+                }
+                val loaded = if (loadedFromDisk.charts.isNotEmpty() && loadedFromDisk.songGroups.isEmpty()) {
+                    val migrated = loadedFromDisk.copy(
+                        songGroups = withContext(Dispatchers.Default) {
+                            buildSongGroups(loadedFromDisk.charts)
+                        },
+                    )
+                    withContext(Dispatchers.IO) { store.save(migrated) }
+                    withContext(Dispatchers.Main) {
+                        appState = migrated
+                        localDataProgress = .57f
+                        localDataStage = "正在读取用户成绩索引"
+                    }
+                    migrated
+                } else {
+                    loadedFromDisk
                 }
                 val loadedBjmIndex = store.loadBjmIndex() ?: BjmIndex()
                 val indexNeedsRebuild = !isPersistedBjmIndexUsable(loaded, loadedBjmIndex, store)
@@ -458,7 +481,7 @@ class MainActivity : ComponentActivity() {
 
     private fun syncAllData() {
         startDataSync(DataSyncTarget.FULL) {
-            syncStage = "正在同步 Textage 歌曲库"
+            syncStage = "正在同步 Textage 曲目库"
             syncTextageData()
             if (appState.bjmUser != null) {
                 syncStage = "正在同步 BJM 曲目库"
@@ -477,11 +500,11 @@ class MainActivity : ComponentActivity() {
 
     private fun syncTextageOnly() {
         startDataSync(DataSyncTarget.TEXTAGE) {
-            syncStage = "正在同步 Textage 歌曲库"
+            syncStage = "正在同步 Textage 曲目库"
             syncTextageData()
             syncStage = "正在构建索引"
             rebuildTextageBjmIndex()
-            message = "Textage 歌曲库同步完成"
+            message = "Textage 曲目库同步完成"
         }
     }
 
@@ -517,7 +540,7 @@ class MainActivity : ComponentActivity() {
         val initial = appState.charts.isEmpty() || !store.isTextageSyncComplete()
         textageSyncing = true
         textageError = null
-        textageProgress = TextageSyncProgress(initial, 0, 0, "正在获取全部歌曲元数据…")
+        textageProgress = TextageSyncProgress(initial, 0, 0, "正在获取全部曲目元数据…")
         try {
             var lastProgressPublishedAt = 0L
             var lastProgressCompleted = 0
@@ -545,7 +568,10 @@ class MainActivity : ComponentActivity() {
                     )
                 } ?: incoming
             }
-            val nextState = appState.copy(charts = merged)
+            val songGroups = withContext(Dispatchers.Default) {
+                buildSongGroups(merged)
+            }
+            val nextState = appState.copy(charts = merged, songGroups = songGroups)
             appState = nextState
             val textageRevision = System.currentTimeMillis()
             withContext(Dispatchers.IO) {
@@ -557,7 +583,7 @@ class MainActivity : ComponentActivity() {
                 initial = initial,
                 completed = textageProgress?.total ?: imported.size,
                 total = textageProgress?.total ?: imported.size,
-                currentTitle = "歌曲元数据获取完成",
+                currentTitle = "曲目元数据获取完成",
             )
             textageProgress = null
         } catch (error: Exception) {
@@ -784,7 +810,12 @@ private fun IidxApp(
     Scaffold(containerColor = Background) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             var browserMode by rememberSaveable { mutableStateOf("SP") }
-            val chartsBySongKey = remember(state.charts) { state.charts.groupBy(::songGroupKey) }
+            val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
+            val chartsBySongKey = remember(state.songGroups, state.charts) {
+                state.songGroups.associate { group ->
+                    group.key to group.chartIds.mapNotNull { chartId -> chartsById[chartId] }
+                }
+            }
             val showingBootstrap = !localCatalogPresent && (state.charts.isEmpty() || textageProgress?.initial == true)
             if (localDataLoading) {
                 LocalDataLoadingScreen(
@@ -1119,24 +1150,27 @@ private fun ChartBrowserScreen(
                 .sorted()
                 .toList()
         }
-        val allSongs = remember(state.charts, mode) {
-            state.charts
-                .asSequence()
-                .filter { it.mode == mode }
-                .groupBy(::songGroupKey)
-                .values
-                .map { group ->
+        val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
+        val allSongs = remember(state.songGroups, state.charts, mode) {
+            state.songGroups.mapNotNull { group ->
+                val charts = group.chartIds
+                    .mapNotNull { chartId -> chartsById[chartId] }
+                    .filter { it.mode == mode }
+                if (charts.isEmpty()) {
+                    null
+                } else {
                     SongGroup(
-                        key = songGroupKey(group.first()),
-                        title = group.first().title,
-                        subtitle = group.first().subtitle,
-                        genre = group.first().genre,
-                        composer = group.first().composer,
-                        version = group.first().version,
-                        sourceLabel = group.first().sourceLabel,
-                        charts = group,
+                        key = group.key,
+                        title = group.title,
+                        subtitle = group.subtitle,
+                        genre = group.genre,
+                        composer = group.composer,
+                        version = group.version,
+                        sourceLabel = group.sourceLabel,
+                        charts = charts,
                     )
                 }
+            }
         }
         val songs = remember(allSongs, query, selectedVersion, selectedLevel) {
             allSongs.mapNotNull { song ->
@@ -1374,8 +1408,8 @@ private fun UpdateSettingsScreen(
                 modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 2.dp),
             )
             SettingsActionRow(
-                title = "Textage 歌曲库",
-                subtitle = "同步歌曲元数据",
+                title = "曲目库",
+                subtitle = "同步曲目元数据",
                 actionLabel = if (syncTarget == DataSyncTarget.TEXTAGE) "同步中…" else "同步",
                 enabled = !syncing,
                 onClick = onSyncTextage,
@@ -1629,7 +1663,7 @@ private fun TextageBootstrapScreen(
         Text(if (error == null) "正在加载谱面元数据" else "谱面元数据获取失败", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            if (error == null) "首次启动会从 Textage 获取歌曲元数据并保存到本机。" else error,
+            if (error == null) "首次启动会从 Textage 获取曲目元数据并保存到本机。" else error,
             color = if (error == null) Muted else Orange,
             fontSize = 12.sp,
         )
@@ -2066,7 +2100,22 @@ private fun rankSummary(exScore: Int, noteCount: Int): String {
 private fun normalizeMusicTitle(value: String): String =
     Normalizer.normalize(value.trim(), Normalizer.Form.NFKC)
         .lowercase(Locale.ROOT)
-        .replace(Regex("[^\\p{L}\\p{N}]"), "")
+        .replace(MusicTitleFilterRegex, "")
+
+private fun buildSongGroups(charts: List<IidxChart>): List<IidxSongGroup> =
+    charts.groupBy(::songGroupKey).map { (key, group) ->
+        val first = group.first()
+        IidxSongGroup(
+            key = key,
+            title = first.title,
+            subtitle = first.subtitle,
+            genre = first.genre,
+            composer = first.composer,
+            version = first.version,
+            sourceLabel = first.sourceLabel,
+            chartIds = group.map(IidxChart::id),
+        )
+    }
 
 private fun buildBjmMusicIndex(music: List<BjmMusic>): Map<String, List<BjmMusic>> =
     music
@@ -2092,16 +2141,15 @@ private fun findBjmMusic(chart: IidxChart, index: Map<String, List<BjmMusic>>): 
     )
 }
 
-private fun buildSongMusicIds(charts: List<IidxChart>, music: List<BjmMusic>): Map<String, Int> {
-    val musicIndex = buildBjmMusicIndex(music)
-    return charts
-        .groupBy(::songGroupKey)
-        .asSequence()
-        .mapNotNull { (songKey, songCharts) ->
+private fun buildSongMusicIds(state: IidxAppState): Map<String, Int> {
+    val musicIndex = buildBjmMusicIndex(state.bjmMusic)
+    val chartsById = state.charts.associateBy { it.id }
+    return state.songGroups.asSequence().mapNotNull { songGroup ->
+            val songCharts = songGroup.chartIds.mapNotNull { chartId -> chartsById[chartId] }
             val representative = songCharts.minWithOrNull(
                 compareBy<IidxChart>({ it.textageUrl == null }, { it.level <= 0 }, { difficultyOrder(it.difficulty) }),
             ) ?: return@mapNotNull null
-            findBjmMusic(representative, musicIndex)?.musicId?.let { musicId -> songKey to musicId }
+            findBjmMusic(representative, musicIndex)?.musicId?.let { musicId -> songGroup.key to musicId }
         }
         .toMap()
 }
@@ -2113,7 +2161,7 @@ private fun buildBjmIndex(
     scoresRevision: Long,
 ): BjmIndex {
     return BjmIndex(
-        songMusicIds = buildSongMusicIds(state.charts, state.bjmMusic),
+        songMusicIds = buildSongMusicIds(state),
         scoresByKey = state.bjmScores.associateBy { it.key },
         textageRevision = textageRevision,
         musicRevision = musicRevision,
@@ -2129,7 +2177,7 @@ private fun rebuildBjmTextageIndex(
     musicRevision: Long,
     scoresRevision: Long,
 ): BjmIndex = previous.copy(
-    songMusicIds = buildSongMusicIds(state.charts, state.bjmMusic),
+    songMusicIds = buildSongMusicIds(state),
     textageRevision = textageRevision,
     musicRevision = musicRevision,
     scoresRevision = scoresRevision,
@@ -2143,7 +2191,7 @@ private fun rebuildBjmMusicIndex(
     musicRevision: Long,
     scoresRevision: Long,
 ): BjmIndex = previous.copy(
-    songMusicIds = buildSongMusicIds(state.charts, state.bjmMusic),
+    songMusicIds = buildSongMusicIds(state),
     textageRevision = textageRevision,
     musicRevision = musicRevision,
     scoresRevision = scoresRevision,
