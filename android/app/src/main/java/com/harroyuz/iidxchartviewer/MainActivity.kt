@@ -1402,6 +1402,7 @@ private fun UpdateSettingsScreen(
                 enabled = !syncing && bjmLoggedIn,
                 onClick = onSyncBjmScores,
             )
+            HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
             SettingsActionRow(
                 title = "清除谱面缓存",
                 subtitle = "下次打开谱面时重新解析",
