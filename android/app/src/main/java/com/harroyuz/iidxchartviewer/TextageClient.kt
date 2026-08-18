@@ -755,35 +755,38 @@ internal object TextageParser {
         val open = HashMap<Int, OpenCharge>()
         measures.toSortedMap().forEach { (measureIndex, entries) ->
             entries.forEach { entry ->
-                val lane = entry.lane
-                val startBeat = chargeBeat(measureIndex, entry.position, measureTicks)
-                val endBeat = chargeBeat(measureIndex, entry.position + entry.length, measureTicks)
-                val begins = entry.type and 1 != 0
-                val ends = entry.type and 2 != 0
-                val current = open[lane]
+                // Textage uses a two-digit lane value (for example 37) for
+                // simultaneous charge notes on lanes 3 and 7.
+                chargeLanes(entry.lane).forEach { lane ->
+                    val startBeat = chargeBeat(measureIndex, entry.position, measureTicks)
+                    val endBeat = chargeBeat(measureIndex, entry.position + entry.length, measureTicks)
+                    val begins = entry.type and 1 != 0
+                    val ends = entry.type and 2 != 0
+                    val current = open[lane]
 
-                if (begins) {
-                    // A malformed/overlapping source entry should not discard
-                    // the previous head; close it at the last known position.
-                    if (current != null) {
-                        result += chartNoteAtBeat(current.startBeat, laneOffset + lane, current.lastBeat - current.startBeat)
-                    }
-                    if (ends) {
+                    if (begins) {
+                        // A malformed/overlapping source entry should not discard
+                        // the previous head; close it at the last known position.
+                        if (current != null) {
+                            result += chartNoteAtBeat(current.startBeat, laneOffset + lane, current.lastBeat - current.startBeat)
+                        }
+                        if (ends) {
+                            result += chartNoteAtBeat(startBeat, laneOffset + lane, (endBeat - startBeat).coerceAtLeast(0f))
+                        } else {
+                            open[lane] = OpenCharge(startBeat, endBeat)
+                        }
+                    } else if (current != null) {
+                        current.lastBeat = maxOf(current.lastBeat, endBeat)
+                        if (ends) {
+                            result += chartNoteAtBeat(current.startBeat, laneOffset + lane, (endBeat - current.startBeat).coerceAtLeast(0f))
+                            open.remove(lane)
+                        }
+                    } else if (ends) {
+                        // If the fetched page starts after the beginning of a
+                        // continued charge note, retain the visible tail rather
+                        // than silently dropping the object.
                         result += chartNoteAtBeat(startBeat, laneOffset + lane, (endBeat - startBeat).coerceAtLeast(0f))
-                    } else {
-                        open[lane] = OpenCharge(startBeat, endBeat)
                     }
-                } else if (current != null) {
-                    current.lastBeat = maxOf(current.lastBeat, endBeat)
-                    if (ends) {
-                        result += chartNoteAtBeat(current.startBeat, laneOffset + lane, (endBeat - current.startBeat).coerceAtLeast(0f))
-                        open.remove(lane)
-                    }
-                } else if (ends) {
-                    // If the fetched page starts after the beginning of a
-                    // continued charge note, retain the visible tail rather
-                    // than silently dropping the object.
-                    result += chartNoteAtBeat(startBeat, laneOffset + lane, (endBeat - startBeat).coerceAtLeast(0f))
                 }
             }
         }
@@ -795,6 +798,9 @@ internal object TextageParser {
 
     private fun chargeBeat(measureIndex: Int, position: Int, measureTicks: Map<Int, Int>): Float =
         measureStartBeat(measureIndex, measureTicks) + position / 32f
+
+    private fun chargeLanes(encodedLane: Int): List<Int> =
+        if (encodedLane < 10) listOf(encodedLane) else listOf(encodedLane % 10, encodedLane / 10)
 
     private fun chartNoteAtBeat(beat: Float, lane: Int, holdBeats: Float): ChartNote = ChartNote(
         beat = beat,

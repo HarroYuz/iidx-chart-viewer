@@ -1083,7 +1083,11 @@ private fun UpdateDialog(
                 Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("${BuildConfig.VERSION_NAME} → ${release.tagName}", color = Purple, fontWeight = FontWeight.Bold)
+                Text(
+                    "v${BuildConfig.VERSION_NAME.removePrefix("v")} → v${release.tagName.removePrefix("v")}",
+                    color = Purple,
+                    fontWeight = FontWeight.Bold,
+                )
                 Text(release.title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text(release.notes.ifBlank { "暂无 Release Note" }, color = Muted, fontSize = 12.sp)
                 if (downloadProgress != null) {

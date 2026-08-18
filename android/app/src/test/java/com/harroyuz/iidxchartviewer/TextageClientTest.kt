@@ -87,6 +87,35 @@ class TextageClientTest {
     }
 
     @Test
+    fun expandsTwoDigitChargeLanes() {
+        val source = """
+            measure=51;
+            if(k){
+                c1[51]=[[37,0,22],[26,24,22],[15,48]];
+                sp[51]="";
+            }else{
+                sp[51]="";
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "two-digit-charge-test",
+            title = "two-digit-charge-test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 6,
+            version = "test",
+            bpm = "160",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertEquals(listOf(3, 7, 2, 6, 1, 5), parsed.notes.map { it.lane })
+        assertEquals(6, parsed.notes.size)
+        assertTrue(parsed.notes.none { it.lane >= 8 })
+    }
+
+    @Test
     fun selectsDpElseBranchWithoutRegexError() {
         val source = """
             if(k){
