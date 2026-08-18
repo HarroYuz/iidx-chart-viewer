@@ -99,8 +99,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -1246,22 +1248,14 @@ private fun ChartDetailScreen(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    Text(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, maxLines = 1, softWrap = false)
-                }
+                AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp)
                 Spacer(Modifier.height(3.dp))
-                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    Text(chart.title, color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                }
+                AutoScrollingText(chart.title, color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
                 if (chart.subtitle.isNotBlank()) {
-                    Row(Modifier.horizontalScroll(rememberScrollState())) {
-                        Text(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp, maxLines = 1, softWrap = false)
-                    }
+                    AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                 }
                 Spacer(Modifier.height(4.dp))
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    Text(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, maxLines = 1, softWrap = false)
-                }
+                AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
                 DetailStat("版本 ", chart.version.ifBlank { "—" })
@@ -2132,6 +2126,50 @@ private fun ChartCanvas(
             }
             }
         }
+    }
+}
+
+@Composable
+private fun AutoScrollingText(
+    text: String,
+    color: ComposeColor,
+    fontSize: TextUnit,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+) {
+    val scrollState = rememberScrollState()
+    LaunchedEffect(text, scrollState.maxValue) {
+        if (scrollState.maxValue <= 0) return@LaunchedEffect
+        scrollState.scrollTo(0)
+        val durationMillis = (scrollState.maxValue * 7).coerceIn(1_200, 5_000)
+        delay(900L)
+        while (isActive) {
+            scrollState.animateScrollTo(
+                scrollState.maxValue,
+                animationSpec = tween(durationMillis = durationMillis),
+            )
+            delay(900L)
+            scrollState.animateScrollTo(
+                0,
+                animationSpec = tween(durationMillis = durationMillis),
+            )
+            delay(900L)
+        }
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState, enabled = false),
+    ) {
+        Text(
+            text,
+            color = color,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            fontWeight = fontWeight,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
