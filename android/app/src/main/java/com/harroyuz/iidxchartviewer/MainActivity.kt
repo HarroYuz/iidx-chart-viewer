@@ -948,7 +948,7 @@ private fun ChartBrowserScreen(
                 }
             }
             val activeFilterSummary = buildString {
-                selectedVersion?.let { append("$it(版本)") }
+                selectedVersion?.let { append(it) }
                 selectedLevel?.let {
                     if (isNotEmpty()) append("，")
                     append("LEVEL $it")
