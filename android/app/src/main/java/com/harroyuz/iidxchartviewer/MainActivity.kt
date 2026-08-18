@@ -102,6 +102,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.core.content.FileProvider
@@ -2239,12 +2240,12 @@ private fun AutoScrollingText(
         while (isActive) {
             scrollState.animateScrollTo(
                 scrollState.maxValue,
-                animationSpec = tween(durationMillis = durationMillis),
+                animationSpec = tween(durationMillis = durationMillis, easing = LinearEasing),
             )
             delay(900L)
             scrollState.animateScrollTo(
                 0,
-                animationSpec = tween(durationMillis = durationMillis),
+                animationSpec = tween(durationMillis = durationMillis, easing = LinearEasing),
             )
             delay(900L)
         }
