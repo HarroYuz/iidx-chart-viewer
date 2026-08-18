@@ -1837,17 +1837,25 @@ private fun DifficultyChip(
         if (score != null) {
             Text(
                 clearFlagShortName(score.clearFlag),
-                color = clearFlagColor(score.clearFlag),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
+                style = TextStyle(
+                    color = clearFlagColor(score.clearFlag),
+                    fontSize = 10.sp,
+                    lineHeight = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                ),
                 maxLines = 1,
                 modifier = Modifier.align(Alignment.BottomStart),
             )
             Text(
                 scoreRankName(score.exScore, chart.notes),
-                color = Ink,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
+                style = TextStyle(
+                    color = Ink,
+                    fontSize = 10.sp,
+                    lineHeight = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                ),
                 maxLines = 1,
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
