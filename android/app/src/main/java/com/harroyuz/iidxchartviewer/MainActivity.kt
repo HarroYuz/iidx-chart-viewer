@@ -212,9 +212,7 @@ class MainActivity : ComponentActivity() {
                     updateDownloadProgress = updateDownloadProgress,
                     updateInstalling = updateInstalling,
                     onDismissMessage = { message = null },
-                    onLogin = {
-                        message = "BJM接入能力开发中"
-                    },
+                    onLogin = ::openBjmLogin,
                     onOpenBjmProfile = {},
                     onRefreshTextage = ::refreshTextage,
                     onOpenGithub = ::openGithub,
@@ -252,16 +250,6 @@ class MainActivity : ComponentActivity() {
                 }
                 checkForUpdatesIfDue()
             }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Covers devices where the WebView activity is recreated before the
-        // ActivityResult callback reaches this activity.
-        if (loginPending && !bjmSyncing) {
-            loginPending = false
-            syncBjm()
         }
     }
 

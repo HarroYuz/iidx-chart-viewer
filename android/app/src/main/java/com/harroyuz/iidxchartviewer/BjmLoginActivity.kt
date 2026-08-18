@@ -18,9 +18,26 @@ class BjmLoginActivity : Activity() {
         override fun run() {
             if (loginCompleted || !::webView.isInitialized) return
             webView.evaluateJavascript(
-                "(async()=>{try{const r=await fetch('/api/auth/me',{credentials:'include',cache:'no-store'});return r.ok?'AUTH_OK':'AUTH_WAIT'}catch(e){return 'AUTH_WAIT'}})();",
+                """
+                    (async()=>{
+                        try {
+                            const response = await fetch('/api/auth/me', {
+                                credentials: 'include',
+                                cache: 'no-store',
+                                redirect: 'follow'
+                            });
+                            if (!response.ok || !response.url.endsWith('/api/auth/me')) return false;
+                            const contentType = response.headers.get('content-type') || '';
+                            if (!contentType.includes('application/json')) return false;
+                            const user = await response.json();
+                            return !!(user && user.id);
+                        } catch (error) {
+                            return false;
+                        }
+                    })();
+                """.trimIndent(),
             ) { result ->
-                if (result == "\"AUTH_OK\"") completeLogin()
+                if (result == "true") completeLogin()
                 else if (!loginCompleted) handler.postDelayed(this, 700L)
             }
         }
@@ -49,7 +66,7 @@ class BjmLoginActivity : Activity() {
 
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
-                    if (url.startsWith("https://u.bjmania.com/")) handler.removeCallbacks(authPoll)
+                    handler.removeCallbacks(authPoll)
                     handler.post(authPoll)
                 }
             }
