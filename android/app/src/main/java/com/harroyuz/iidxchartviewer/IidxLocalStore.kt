@@ -261,6 +261,10 @@ class IidxLocalStore(context: Context) {
         chartCacheFile(data.chart.id).writeText(json.toString())
     }
 
+    fun clearChartCache() {
+        chartCacheDirectory.listFiles()?.forEach { file -> file.deleteRecursively() }
+    }
+
     fun clear() {
         preferences.edit().clear().apply()
         catalogFile.delete()

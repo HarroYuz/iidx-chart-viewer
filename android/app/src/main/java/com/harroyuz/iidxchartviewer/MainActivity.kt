@@ -156,7 +156,7 @@ class MainActivity : ComponentActivity() {
     private var updateInfo by mutableStateOf<GithubReleaseInfo?>(null)
     private var updateDownloadProgress by mutableStateOf<Float?>(null)
     private var updateInstalling by mutableStateOf(false)
-    private var settingsDialogVisible by mutableStateOf(false)
+    private var settingsPageVisible by mutableStateOf(false)
     private var loginPending = false
     private var exitToastShown = false
 
@@ -195,7 +195,6 @@ class MainActivity : ComponentActivity() {
             )) {
                 IidxApp(
                     state = appState,
-                    bjmSyncing = bjmSyncing,
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
                     textageError = textageError,
@@ -215,17 +214,17 @@ class MainActivity : ComponentActivity() {
                         message = "BJM接入能力开发中"
                     },
                     onOpenBjmProfile = {},
-                    onSyncBjm = ::syncBjm,
                     onRefreshTextage = ::refreshTextage,
                     onOpenGithub = ::openGithub,
                     onCheckForUpdates = { checkForUpdates(manual = true) },
-                    settingsDialogVisible = settingsDialogVisible,
-                    onOpenSettings = { settingsDialogVisible = true },
-                    onDismissSettings = { settingsDialogVisible = false },
+                    settingsPageVisible = settingsPageVisible,
+                    onOpenSettings = { settingsPageVisible = true },
+                    onDismissSettings = { settingsPageVisible = false },
                     onAutoUpdateEnabledChange = {
                         autoUpdateEnabled = it
                         store.setAutoUpdateEnabled(it)
                     },
+                    onClearChartCache = ::clearChartCache,
                     onDismissUpdate = { if (updateDownloadProgress == null && !updateInstalling) updateInfo = null },
                     onDownloadUpdate = ::downloadUpdate,
                     onOpenChart = ::openChart,
@@ -456,13 +455,22 @@ class MainActivity : ComponentActivity() {
         playerSettings = settings.copy(speed = settings.safeSpeed)
         store.savePlayerSettings(playerSettings)
     }
+
+    private fun clearChartCache() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            store.clearChartCache()
+            withContext(Dispatchers.Main) {
+                selectedChartData = null
+                message = "已清除谱面缓存"
+            }
+        }
+    }
 }
 
 @Composable
 private fun IidxApp(
     state: IidxAppState,
     localCatalogPresent: Boolean,
-    bjmSyncing: Boolean,
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
     textageError: String?,
@@ -477,16 +485,16 @@ private fun IidxApp(
     updateInfo: GithubReleaseInfo?,
     updateDownloadProgress: Float?,
     updateInstalling: Boolean,
-    settingsDialogVisible: Boolean,
+    settingsPageVisible: Boolean,
     onLogin: () -> Unit,
     onOpenBjmProfile: () -> Unit,
-    onSyncBjm: () -> Unit,
     onRefreshTextage: () -> Unit,
     onOpenGithub: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onOpenSettings: () -> Unit,
     onDismissSettings: () -> Unit,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
+    onClearChartCache: () -> Unit,
     onDismissUpdate: () -> Unit,
     onDownloadUpdate: (GithubReleaseInfo) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
@@ -513,21 +521,21 @@ private fun IidxApp(
                     state = state,
                     mode = browserMode,
                     onModeChange = { browserMode = it },
-                    bjmSyncing = bjmSyncing,
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
+                    textageError = textageError,
                     onLogin = onLogin,
                     onOpenBjmProfile = onOpenBjmProfile,
-                    onSyncBjm = onSyncBjm,
                     onRefreshTextage = onRefreshTextage,
                     onOpenGithub = onOpenGithub,
                     onCheckForUpdates = onCheckForUpdates,
                     updateChecking = updateChecking,
-                    settingsDialogVisible = settingsDialogVisible,
+                    settingsPageVisible = settingsPageVisible,
                     onOpenSettings = onOpenSettings,
                     onDismissSettings = onDismissSettings,
                     autoUpdateEnabled = autoUpdateEnabled,
                     onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
+                    onClearChartCache = onClearChartCache,
                     onOpenChart = onOpenChart,
                     showingDetail = selectedChart != null,
                     onBack = onBack,
@@ -599,21 +607,21 @@ private fun ChartBrowserScreen(
     state: IidxAppState,
     mode: String,
     onModeChange: (String) -> Unit,
-    bjmSyncing: Boolean,
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
+    textageError: String?,
     onLogin: () -> Unit,
     onOpenBjmProfile: () -> Unit,
-    onSyncBjm: () -> Unit,
     onRefreshTextage: () -> Unit,
     onOpenGithub: () -> Unit,
     onCheckForUpdates: () -> Unit,
     updateChecking: Boolean,
-    settingsDialogVisible: Boolean,
+    settingsPageVisible: Boolean,
     onOpenSettings: () -> Unit,
     onDismissSettings: () -> Unit,
     autoUpdateEnabled: Boolean,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
+    onClearChartCache: () -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     showingDetail: Boolean,
     onBack: () -> Unit,
@@ -682,6 +690,7 @@ private fun ChartBrowserScreen(
         when {
             drawerState.isOpen -> closeDrawer()
             showingDetail -> onBack()
+            settingsPageVisible -> onDismissSettings()
             else -> onRequestExit()
         }
     }
@@ -700,34 +709,21 @@ private fun ChartBrowserScreen(
                         color = Ink,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
                     )
                     Column(Modifier.weight(1f)) {
                         NavigationDrawerItem(
-                            label = { Text("更新谱面数据") },
-                            selected = false,
+                            label = { Text("谱面列表") },
+                            selected = !settingsPageVisible,
                             onClick = {
-                                if (!textageSyncing) {
-                                    closeDrawer()
-                                    onRefreshTextage()
-                                }
+                                closeDrawer()
+                                onDismissSettings()
                             },
-                            modifier = Modifier.padding(horizontal = 12.dp).alpha(if (textageSyncing) .5f else 1f),
-                        )
-                        NavigationDrawerItem(
-                            label = { Text(if (bjmSyncing) "同步 BJM 成绩中…" else "同步 BJM 成绩") },
-                            selected = false,
-                            onClick = {
-                                if (!bjmSyncing && state.bjmUser != null) {
-                                    closeDrawer()
-                                    onSyncBjm()
-                                }
-                            },
-                            modifier = Modifier.padding(horizontal = 12.dp).alpha(if (bjmSyncing || state.bjmUser == null) .5f else 1f),
+                            modifier = Modifier.padding(horizontal = 12.dp),
                         )
                         NavigationDrawerItem(
                             label = { Text("设置") },
-                            selected = false,
+                            selected = settingsPageVisible,
                             onClick = {
                                 closeDrawer()
                                 onOpenSettings()
@@ -778,6 +774,18 @@ private fun ChartBrowserScreen(
             }
         },
     ) {
+        if (settingsPageVisible) {
+            UpdateSettingsScreen(
+                enabled = autoUpdateEnabled,
+                onEnabledChange = onAutoUpdateEnabledChange,
+                onOpenMenu = { drawerScope.launch { drawerState.open() } },
+                textageSyncing = textageSyncing,
+                textageProgress = textageProgress,
+                textageError = textageError,
+                onRefreshTextage = onRefreshTextage,
+                onClearChartCache = onClearChartCache,
+            )
+        } else {
         Column(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
@@ -872,6 +880,21 @@ private fun ChartBrowserScreen(
                     ) { Text("清除", color = Muted, fontSize = 11.sp) }
                 }
             }
+            val activeFilterSummary = buildString {
+                selectedVersion?.let { append("$it(版本)") }
+                selectedLevel?.let {
+                    if (isNotEmpty()) append("，")
+                    append("LEVEL $it")
+                }
+            }
+            if (!filterExpanded && activeFilterSummary.isNotBlank()) {
+                Text(
+                    "已筛选：$activeFilterSummary",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
             Spacer(Modifier.height(6.dp))
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                 items(songs, key = { it.key }) { song ->
@@ -880,37 +903,100 @@ private fun ChartBrowserScreen(
                 item { Spacer(Modifier.height(18.dp)) }
             }
         }
-    }
-    if (settingsDialogVisible) {
-        UpdateSettingsDialog(
-            enabled = autoUpdateEnabled,
-            onEnabledChange = onAutoUpdateEnabledChange,
-            onDismiss = onDismissSettings,
-        )
+        }
     }
 }
 
 @Composable
-private fun UpdateSettingsDialog(
+private fun UpdateSettingsScreen(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
-    onDismiss: () -> Unit,
+    onOpenMenu: () -> Unit,
+    textageSyncing: Boolean,
+    textageProgress: TextageSyncProgress?,
+    textageError: String?,
+    onRefreshTextage: () -> Unit,
+    onClearChartCache: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("设置") },
-        text = {
+    Column(Modifier.fillMaxSize().background(Background)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onOpenMenu,
+                modifier = Modifier.size(42.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) {
+                Text("☰", color = Ink, fontSize = 24.sp)
+            }
+            Text("自动检查更新", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+        HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        ) {
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("每天自动检查更新", color = Ink, fontSize = 14.sp)
+                Column(Modifier.weight(1f)) {
+                    Text("自动检查更新", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text("每天检查 GitHub Release 是否有新版本", color = Muted, fontSize = 12.sp)
+                }
                 Switch(checked = enabled, onCheckedChange = onEnabledChange)
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
-    )
+            HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
+            SettingsActionRow(
+                title = "同步歌曲数据",
+                subtitle = "从 Textage 更新歌曲元数据",
+                actionLabel = if (textageSyncing) "同步中…" else "同步",
+                enabled = !textageSyncing,
+                onClick = onRefreshTextage,
+            )
+            SettingsActionRow(
+                title = "清除谱面缓存",
+                subtitle = "下次打开谱面时重新解析",
+                actionLabel = "清除",
+                enabled = !textageSyncing,
+                onClick = onClearChartCache,
+            )
+            if (textageProgress != null) TextageSyncBanner(textageProgress)
+            if (!textageError.isNullOrBlank()) {
+                Text(
+                    textageError,
+                    color = Orange,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(subtitle, color = Muted, fontSize = 12.sp)
+        }
+        TextButton(onClick = onClick, enabled = enabled) {
+            Text(actionLabel, color = if (enabled) Purple else Muted)
+        }
+    }
 }
 
 @Composable
