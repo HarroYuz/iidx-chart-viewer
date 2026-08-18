@@ -64,6 +64,44 @@ class TextageClientTest {
     }
 
     @Test
+    fun selectsDpHyperDefaultAfterBeginnerBranch() {
+        val source = """
+            if(k){
+                sp[1]="01";
+            }else{
+                if(g){
+                    dp[1]="02";
+                }else{
+                    sp[1]="01";
+                    dp[1]="04";
+                    if(a){
+                        dp[1]="08";
+                    }
+                    if(l){
+                        dp[1]="10";
+                    }
+                }
+            }
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "test-dp-hyper-default",
+            title = "test",
+            mode = "DP",
+            difficulty = "H",
+            level = 7,
+            notes = 1,
+            version = "test",
+            bpm = "140",
+        )
+
+        val parsed = TextageParser.parseChart(chart, source)
+
+        assertTrue(parsed.parsed)
+        assertTrue(parsed.notes.any { it.lane == 10 })
+        assertTrue(parsed.notes.none { it.lane == 9 || it.lane == 11 })
+    }
+
+    @Test
     fun parsesTextageTempoChangesAndMeasureLengths() {
         val source = """
             genre="X"; title="X"; artist="Y"; bpm="40～165"; measure=5;

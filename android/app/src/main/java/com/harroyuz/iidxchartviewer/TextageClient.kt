@@ -436,31 +436,28 @@ internal object TextageParser {
      */
     private fun decodeTextageChart(chart: IidxChart, source: String, measureTicks: Map<Int, Int>): List<ChartNote> {
         val modeBody = textageModeBody(source, chart.mode) ?: return emptyList()
-        val variable = if (chart.mode == "DP") "dp" else "sp"
-        val branchNames = listOf("k", "a", "l", "g", "kuro")
-        val branchStart = branchNames.mapNotNull { name ->
-            conditionalMatch(modeBody, name)?.range?.first
-        }.minOrNull() ?: modeBody.length
-        val baseSource = modeBody.substring(0, branchStart)
-        val base = parseSparseAssignment(baseSource, variable, emptyList())
-        val selectedBranch = when (chart.difficulty) {
-            "A" -> "a"
-            "L" -> "a"
-            "N" -> "l"
-            "B" -> "g"
-            "H" -> "k"
-            else -> "k"
-        }?.let { conditionalBody(modeBody, it) }
-        val activeSource = selectedBranch ?: baseSource
-        val measures = parseSparseAssignment(activeSource, variable, base)
+        // SP's default HYPER data is the direct body of if(k). DP has one
+        // additional if(g){BEGINNER}else{HYPER/ANOTHER/NORMAL} wrapper. The
+        // old parser cut DP at if(g), which made a URL such as DH700 appear
+        // to contain no chart at all.
+        val baseSource = defaultDifficultyBody(modeBody, chart.mode)
+        val activeSource = when (chart.difficulty) {
+            "A", "L" -> conditionalBody(modeBody, chart.difficulty.lowercase())
+            "B" -> conditionalBody(modeBody, "g")
+            else -> null
+        } ?: baseSource
+
+        val baseSp = parseSparseAssignment(baseSource, "sp", emptyMap())
+        val baseDp = parseSparseAssignment(baseSource, "dp", mapOf("sp" to baseSp))
+        val baseReferences = mapOf("sp" to baseSp, "dp" to baseDp)
+        val selectedSp = parseSparseAssignment(activeSource, "sp", baseReferences)
+        val selectedDp = parseSparseAssignment(activeSource, "dp", baseReferences + ("sp" to selectedSp))
+        val selectedMeasures = mapOf("sp" to selectedSp, "dp" to selectedDp)
 
         val notes = ArrayList<ChartNote>()
         val arrays = if (chart.mode == "DP") listOf("sp" to 0, "dp" to 8) else listOf("sp" to 0)
         for ((arrayName, laneOffset) in arrays) {
-            val sideMeasures = if (arrayName == variable) measures else {
-                val sideBase = parseSparseAssignment(baseSource, arrayName, emptyList())
-                selectedBranch?.let { parseSparseAssignment(it, arrayName, sideBase) } ?: sideBase
-            }
+            val sideMeasures = selectedMeasures[arrayName].orEmpty()
             val chargeArray = if (arrayName == "sp") "c1" else "c2"
             val chargeBase = parseChargeAssignments(baseSource, emptyMap())
             val chargeMeasures = parseChargeAssignments(activeSource, chargeBase)
@@ -481,6 +478,19 @@ internal object TextageParser {
         return notes
             .distinctBy { Triple(it.beat, it.lane, it.holdBeats) }
             .sortedWith(compareBy<ChartNote> { it.beat }.thenBy { it.lane })
+    }
+
+    private fun defaultDifficultyBody(modeBody: String, mode: String): String {
+        val source = if (mode == "DP") {
+            conditionalElseBody(modeBody, "g") ?: modeBody
+        } else {
+            modeBody
+        }
+        val firstNestedBranch = listOf("a", "l", "g", "kuro")
+            .mapNotNull { conditionalMatch(source, it)?.range?.first }
+            .minOrNull()
+            ?: source.length
+        return source.substring(0, firstNestedBranch)
     }
 
     private fun parseMeasureTicks(source: String): Map<Int, Int> = buildMap {
@@ -578,18 +588,33 @@ internal object TextageParser {
         return source.substring(open + 1, close)
     }
 
+    private fun conditionalElseBody(source: String, name: String): String? {
+        val match = conditionalMatch(source, name) ?: return null
+        val open = source.indexOf('{', match.range.first)
+        val close = balancedEnd(source, open, '{', '}')
+        if (open < 0 || close <= open) return null
+        val elseMatch = Regex("\\}\\s*else\\s*\\{").find(source, close) ?: return null
+        val elseOpen = source.indexOf('{', elseMatch.range.first)
+        val elseClose = balancedEnd(source, elseOpen, '{', '}')
+        if (elseOpen < 0 || elseClose <= elseOpen) return null
+        return source.substring(elseOpen + 1, elseClose)
+    }
+
     private fun parseSparseAssignment(
         source: String,
         variable: String,
-        references: List<String?>,
+        references: Map<String, List<String?>>,
     ): List<String?> {
-        val result = references.toMutableList()
+        val result = references[variable].orEmpty().toMutableList()
         val marker = Regex("\\b${Regex.escape(variable)}\\s*=\\s*\\[").find(source)
         if (marker != null) {
             val open = source.indexOf('[', marker.range.first)
             val close = balancedEnd(source, open, '[', ']')
             if (open >= 0 && close > open) {
-                val parsed = parseSparseValues(source.substring(open + 1, close), references)
+                val parsed = parseSparseValues(
+                    source.substring(open + 1, close),
+                    references + (variable to result),
+                )
                 result.clear()
                 result.addAll(parsed)
             }
@@ -600,7 +625,7 @@ internal object TextageParser {
             if (parts.size < 2) return@forEach
             val targets = parts.dropLast(1).mapNotNull { targetPattern.matchEntire(it.trim()) }
             if (targets.size != parts.size - 1) return@forEach
-            val value = parseSparseValue(parts.last(), result)
+            val value = parseSparseValue(parts.last(), references + (variable to result))
             targets.forEach { target ->
                 val index = target.groupValues[1].toIntOrNull() ?: return@forEach
                 while (result.size <= index) result += null
@@ -610,18 +635,20 @@ internal object TextageParser {
         return result
     }
 
-    private fun parseSparseValues(body: String, references: List<String?>): List<String?> {
+    private fun parseSparseValues(body: String, references: Map<String, List<String?>>): List<String?> {
         val result = ArrayList<String?>()
         splitJsValues(body).forEach { token -> result += parseSparseValue(token, references) }
         return result
     }
 
-    private fun parseSparseValue(token: String, references: List<String?>): String? {
+    private fun parseSparseValue(token: String, references: Map<String, List<String?>>): String? {
         val trimmed = token.trim().replace(Regex("(?s)/\\*.*?\\*/"), "").trim()
         if (trimmed.isBlank()) return null
         if (trimmed.firstOrNull() == '\'' || trimmed.firstOrNull() == '\"') return readJsString(trimmed, 0).first
-        val reference = Regex("^[A-Za-z_$][A-Za-z0-9_$]*\\s*\\[\\s*(\\d+)\\s*]$").find(trimmed)
-        if (reference != null) return references.getOrNull(reference.groupValues[1].toInt())
+        val reference = Regex("^([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\[\\s*(\\d+)\\s*]$").find(trimmed)
+        if (reference != null) {
+            return references[reference.groupValues[1]]?.getOrNull(reference.groupValues[2].toInt())
+        }
         return trimmed
     }
 

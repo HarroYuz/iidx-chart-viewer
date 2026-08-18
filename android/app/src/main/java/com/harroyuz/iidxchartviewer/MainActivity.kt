@@ -27,11 +27,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -39,9 +41,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -96,12 +100,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Locale
 
 private val Ink = ComposeColor(0xFF171722)
@@ -122,11 +128,13 @@ private val PlayerSkyBlue = ComposeColor(0xFF28A9E0)
 private val PlayerBpmGreen = ComposeColor(0xFF63D38A)
 private val PlayerMeasureText = ComposeColor(0xFFB7BAC6)
 private const val TEXTAGE_SYNC_INTERVAL_MS = 24L * 60L * 60L * 1000L
+private const val UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: IidxLocalStore
     private lateinit var bjmClient: BjmClient
     private lateinit var textageClient: TextageClient
+    private lateinit var githubUpdateClient: GithubUpdateClient
 
     private var appState by mutableStateOf(IidxAppState())
     private var localCatalogPresent by mutableStateOf(false)
@@ -139,6 +147,12 @@ class MainActivity : ComponentActivity() {
     private var selectedChartData by mutableStateOf<TextageChartData?>(null)
     private var playerSettings by mutableStateOf(PlayerSettings())
     private var message by mutableStateOf<String?>(null)
+    private var autoUpdateEnabled by mutableStateOf(true)
+    private var updateChecking by mutableStateOf(false)
+    private var updateInfo by mutableStateOf<GithubReleaseInfo?>(null)
+    private var updateDownloadProgress by mutableStateOf<Float?>(null)
+    private var updateInstalling by mutableStateOf(false)
+    private var settingsDialogVisible by mutableStateOf(false)
     private var loginPending = false
 
     private val loginLauncher = registerForActivityResult(
@@ -160,6 +174,8 @@ class MainActivity : ComponentActivity() {
         localCatalogPresent = store.hasTextageCatalogMarker()
         bjmClient = BjmClient()
         textageClient = TextageClient()
+        githubUpdateClient = GithubUpdateClient()
+        autoUpdateEnabled = store.autoUpdateEnabled()
         appState = IidxAppState()
         playerSettings = store.loadPlayerSettings()
 
@@ -184,6 +200,11 @@ class MainActivity : ComponentActivity() {
                     playerSettings = playerSettings,
                     message = message,
                     localCatalogPresent = localCatalogPresent,
+                    autoUpdateEnabled = autoUpdateEnabled,
+                    updateChecking = updateChecking,
+                    updateInfo = updateInfo,
+                    updateDownloadProgress = updateDownloadProgress,
+                    updateInstalling = updateInstalling,
                     onDismissMessage = { message = null },
                     onLogin = {
                         Toast.makeText(this@MainActivity, "BJM接入能力开发中", Toast.LENGTH_SHORT).show()
@@ -192,6 +213,16 @@ class MainActivity : ComponentActivity() {
                     onSyncBjm = ::syncBjm,
                     onRefreshTextage = ::refreshTextage,
                     onOpenGithub = ::openGithub,
+                    onCheckForUpdates = { checkForUpdates(manual = true) },
+                    settingsDialogVisible = settingsDialogVisible,
+                    onOpenSettings = { settingsDialogVisible = true },
+                    onDismissSettings = { settingsDialogVisible = false },
+                    onAutoUpdateEnabledChange = {
+                        autoUpdateEnabled = it
+                        store.setAutoUpdateEnabled(it)
+                    },
+                    onDismissUpdate = { if (updateDownloadProgress == null && !updateInstalling) updateInfo = null },
+                    onDownloadUpdate = ::downloadUpdate,
                     onOpenChart = ::openChart,
                     onBack = ::closeChart,
                     onRetryChart = { selectedChart?.let(::openChart) },
@@ -212,6 +243,7 @@ class MainActivity : ComponentActivity() {
                 if (needsBootstrap || dailySyncDue) {
                     refreshTextage()
                 }
+                checkForUpdatesIfDue()
             }
         }
     }
@@ -233,6 +265,71 @@ class MainActivity : ComponentActivity() {
 
     private fun openGithub() {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/HarroYuz/iidx-chart-viewer")))
+    }
+
+    private fun checkForUpdatesIfDue() {
+        if (autoUpdateEnabled && System.currentTimeMillis() - githubUpdateLastCheckAt() >= UPDATE_CHECK_INTERVAL_MS) {
+            checkForUpdates(manual = false)
+        }
+    }
+
+    private fun githubUpdateLastCheckAt(): Long = store.updateLastCheckAt()
+
+    private fun checkForUpdates(manual: Boolean) {
+        if (updateChecking) return
+        updateChecking = true
+        lifecycleScope.launch {
+            try {
+                val release = withContext(Dispatchers.IO) { githubUpdateClient.fetchLatestRelease() }
+                store.setUpdateLastCheckAt()
+                if (GithubUpdateClient.isNewer(BuildConfig.VERSION_NAME, release.tagName)) {
+                    updateInfo = release
+                } else if (manual) {
+                    message = "当前已是最新版本 ${BuildConfig.VERSION_NAME}"
+                }
+            } catch (error: Exception) {
+                if (manual) message = error.message ?: "更新检查失败"
+            } finally {
+                updateChecking = false
+            }
+        }
+    }
+
+    private fun downloadUpdate(release: GithubReleaseInfo) {
+        if (updateDownloadProgress != null || updateInstalling) return
+        updateDownloadProgress = 0f
+        lifecycleScope.launch {
+            try {
+                val apk = githubUpdateClient.downloadApk(this@MainActivity, release) { downloaded, total ->
+                    withContext(Dispatchers.Main) {
+                        updateDownloadProgress = if (total > 0L) {
+                            (downloaded.toFloat() / total).coerceIn(0f, 1f)
+                        } else {
+                            0f
+                        }
+                    }
+                }
+                updateDownloadProgress = 1f
+                updateInstalling = true
+                installApk(apk)
+                updateInfo = null
+            } catch (error: Exception) {
+                message = error.message ?: "APK 下载失败"
+            } finally {
+                updateDownloadProgress = null
+                updateInstalling = false
+            }
+        }
+    }
+
+    private fun installApk(apk: File) {
+        val uri = FileProvider.getUriForFile(this, "${BuildConfig.APPLICATION_ID}.fileprovider", apk)
+        startActivity(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            },
+        )
     }
 
     private fun syncBjm() {
@@ -356,11 +453,23 @@ private fun IidxApp(
     playerSettings: PlayerSettings,
     message: String?,
     onDismissMessage: () -> Unit,
+    autoUpdateEnabled: Boolean,
+    updateChecking: Boolean,
+    updateInfo: GithubReleaseInfo?,
+    updateDownloadProgress: Float?,
+    updateInstalling: Boolean,
+    settingsDialogVisible: Boolean,
     onLogin: () -> Unit,
     onOpenBjmProfile: () -> Unit,
     onSyncBjm: () -> Unit,
     onRefreshTextage: () -> Unit,
     onOpenGithub: () -> Unit,
+    onCheckForUpdates: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onDismissSettings: () -> Unit,
+    onAutoUpdateEnabledChange: (Boolean) -> Unit,
+    onDismissUpdate: () -> Unit,
+    onDownloadUpdate: (GithubReleaseInfo) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onBack: () -> Unit,
     onRetryChart: () -> Unit,
@@ -392,6 +501,13 @@ private fun IidxApp(
                     onSyncBjm = onSyncBjm,
                     onRefreshTextage = onRefreshTextage,
                     onOpenGithub = onOpenGithub,
+                    onCheckForUpdates = onCheckForUpdates,
+                    updateChecking = updateChecking,
+                    settingsDialogVisible = settingsDialogVisible,
+                    onOpenSettings = onOpenSettings,
+                    onDismissSettings = onDismissSettings,
+                    autoUpdateEnabled = autoUpdateEnabled,
+                    onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
                     onOpenChart = onOpenChart,
                     modifier = Modifier.alpha(if (selectedChart == null) 1f else 0f),
                 )
@@ -442,6 +558,15 @@ private fun IidxApp(
                 }
             }
             if (message != null) ToastCard(message, onDismissMessage, Modifier.align(Alignment.BottomCenter))
+            updateInfo?.let { release ->
+                UpdateDialog(
+                    release = release,
+                    downloadProgress = updateDownloadProgress,
+                    installing = updateInstalling,
+                    onDismiss = onDismissUpdate,
+                    onDownload = { onDownloadUpdate(release) },
+                )
+            }
         }
     }
 }
@@ -459,6 +584,13 @@ private fun ChartBrowserScreen(
     onSyncBjm: () -> Unit,
     onRefreshTextage: () -> Unit,
     onOpenGithub: () -> Unit,
+    onCheckForUpdates: () -> Unit,
+    updateChecking: Boolean,
+    settingsDialogVisible: Boolean,
+    onOpenSettings: () -> Unit,
+    onDismissSettings: () -> Unit,
+    autoUpdateEnabled: Boolean,
+    onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -558,19 +690,45 @@ private fun ChartBrowserScreen(
                             },
                             modifier = Modifier.padding(horizontal = 12.dp).alpha(if (bjmSyncing || state.bjmUser == null) .5f else 1f),
                         )
+                        NavigationDrawerItem(
+                            label = { Text("设置") },
+                            selected = false,
+                            onClick = {
+                                closeDrawer()
+                                onOpenSettings()
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
                     }
                     HorizontalDivider()
                     Column(
-                        Modifier.fillMaxWidth()
-                            .clickable {
+                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("版本 ${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 11.sp)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(
+                                onClick = {
+                                    closeDrawer()
+                                    onCheckForUpdates()
+                                },
+                                enabled = !updateChecking,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                            ) {
+                                Text(if (updateChecking) "检查中…" else "检查更新", color = Purple, fontSize = 10.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
                                 closeDrawer()
                                 onOpenGithub()
-                            }
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                    ) {
-                        Text("版本 0.1.1", color = Muted, fontSize = 11.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text("项目主页", color = Ink, fontSize = 14.sp)
                             Spacer(Modifier.weight(1f))
                             Icon(
@@ -688,6 +846,82 @@ private fun ChartBrowserScreen(
             }
         }
     }
+    if (settingsDialogVisible) {
+        UpdateSettingsDialog(
+            enabled = autoUpdateEnabled,
+            onEnabledChange = onAutoUpdateEnabledChange,
+            onDismiss = onDismissSettings,
+        )
+    }
+}
+
+@Composable
+private fun UpdateSettingsDialog(
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("设置") },
+        text = {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("每天自动检查更新", color = Ink, fontSize = 14.sp)
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
+    )
+}
+
+@Composable
+private fun UpdateDialog(
+    release: GithubReleaseInfo,
+    downloadProgress: Float?,
+    installing: Boolean,
+    onDismiss: () -> Unit,
+    onDownload: () -> Unit,
+) {
+    val busy = downloadProgress != null || installing
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("发现新版本") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("${BuildConfig.VERSION_NAME} → ${release.tagName}", color = Purple, fontWeight = FontWeight.Bold)
+                Text(release.title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(release.notes.ifBlank { "暂无 Release Note" }, color = Muted, fontSize = 12.sp)
+                if (downloadProgress != null) {
+                    LinearProgressIndicator(
+                        progress = { downloadProgress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        if (downloadProgress <= 0f) "正在准备下载…" else "正在下载 ${(downloadProgress * 100).toInt()}%",
+                        color = Muted,
+                        fontSize = 11.sp,
+                    )
+                } else if (installing) {
+                    Text("正在启动安装…", color = Muted, fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDownload, enabled = !busy) {
+                Text(if (installing) "安装中…" else "更新")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !busy) { Text("稍后") }
+        },
+    )
 }
 
 @Composable
@@ -1061,7 +1295,13 @@ private fun PlayerConfigBox(
         append("Hi-Speed: ${settings.safeSpeed}x")
         if (isSp) {
             append(", ${settings.side}")
-            if (settings.safePlayOption != "NONE") append(", ${settings.safePlayOption}")
+            settings.safePlayOption.optionAbbreviation()
+                .takeIf { settings.safePlayOption != "NONE" }
+                ?.let { append(" $it") }
+        } else {
+            val options = listOf(settings.safePlayOption1P, settings.safePlayOption2P)
+                .map { it.optionAbbreviation() }
+            if (options.any { it != "NON" }) append(", ${options.joinToString("/")}")
         }
     }
     var speedInput by remember(settings.safeSpeed) { mutableStateOf(settings.safeSpeed.toString()) }
@@ -1127,22 +1367,22 @@ private fun PlayerConfigBox(
                     onSelect = { onSettingsChange(settings.copy(side = it)) },
                 )
             }
-            PlayerSettingChoiceRow(
-                label = "选项",
-                choices = listOf("无", "MIRROR", "RANDOM"),
-                selected = when (settings.safePlayOption) {
-                    "MIRROR" -> "MIRROR"
-                    "RANDOM" -> "RANDOM"
-                    else -> "无"
-                },
-                onSelect = { selected ->
-                    onSettingsChange(settings.copy(playOption = if (selected == "无") "NONE" else selected))
-                },
-            )
-            if (settings.safePlayOption == "RANDOM") {
-                if (isSp) {
+            if (isSp) {
+                PlayerSettingChoiceRow(
+                    label = "选项",
+                    choices = listOf("无", "MIRROR", "RANDOM"),
+                    selected = when (settings.safePlayOption) {
+                        "MIRROR" -> "MIRROR"
+                        "RANDOM" -> "RANDOM"
+                        else -> "无"
+                    },
+                    onSelect = { selected ->
+                        onSettingsChange(settings.copy(playOption = if (selected == "无") "NONE" else selected))
+                    },
+                )
+                if (settings.safePlayOption == "RANDOM") {
                     RandomMappingRow(
-                        label = "RANDOM",
+                        label = "",
                         mapping = if (settings.side == "1P") settings.safeRandomMapping1P else settings.safeRandomMapping2P,
                         onMappingChange = { mapping ->
                             onSettingsChange(
@@ -1151,12 +1391,40 @@ private fun PlayerConfigBox(
                             )
                         },
                     )
-                } else {
+                }
+            } else {
+                PlayerSettingChoiceRow(
+                    label = "1P",
+                    choices = listOf("无", "MIRROR", "RANDOM"),
+                    selected = when (settings.safePlayOption1P) {
+                        "MIRROR" -> "MIRROR"
+                        "RANDOM" -> "RANDOM"
+                        else -> "无"
+                    },
+                    onSelect = { selected ->
+                        onSettingsChange(settings.copy(playOption1P = if (selected == "无") "NONE" else selected))
+                    },
+                )
+                PlayerSettingChoiceRow(
+                    label = "2P",
+                    choices = listOf("无", "MIRROR", "RANDOM"),
+                    selected = when (settings.safePlayOption2P) {
+                        "MIRROR" -> "MIRROR"
+                        "RANDOM" -> "RANDOM"
+                        else -> "无"
+                    },
+                    onSelect = { selected ->
+                        onSettingsChange(settings.copy(playOption2P = if (selected == "无") "NONE" else selected))
+                    },
+                )
+                if (settings.safePlayOption1P == "RANDOM") {
                     RandomMappingRow(
                         label = "1P：",
                         mapping = settings.safeRandomMapping1P,
                         onMappingChange = { onSettingsChange(settings.copy(randomMapping1P = it)) },
                     )
+                }
+                if (settings.safePlayOption2P == "RANDOM") {
                     RandomMappingRow(
                         label = "2P：",
                         mapping = settings.safeRandomMapping2P,
@@ -1242,9 +1510,11 @@ private fun RandomMappingRow(
     val dragThreshold = with(LocalDensity.current) { 30.dp.toPx() }
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(if (label == "RANDOM") 46.dp else 32.dp)) {
-                Text(label, color = Muted, fontSize = 10.sp, lineHeight = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("拖动配置", color = Muted, fontSize = 7.sp, lineHeight = 8.sp, maxLines = 1)
+            Column(Modifier.width(if (label.isBlank()) 46.dp else 32.dp)) {
+                if (label.isNotBlank()) {
+                    Text(label, color = Muted, fontSize = 10.sp, lineHeight = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text("拖动调整", color = Muted, fontSize = if (label.isBlank()) 10.sp else 7.sp, lineHeight = if (label.isBlank()) 10.sp else 8.sp, maxLines = 1)
             }
             Spacer(Modifier.width(6.dp))
             mapping.forEachIndexed { index, value ->
@@ -1492,6 +1762,8 @@ private fun ChartPlayer(
                 showMeasureNumbers = settings.showMeasureNumbers,
                 side = settings.side,
                 playOption = settings.safePlayOption,
+                playOption1P = settings.safePlayOption1P,
+                playOption2P = settings.safePlayOption2P,
                 randomMapping1P = settings.safeRandomMapping1P,
                 randomMapping2P = settings.safeRandomMapping2P,
                 playing = playing,
@@ -1524,6 +1796,8 @@ private fun ChartCanvas(
     showMeasureNumbers: Boolean,
     side: String,
     playOption: String,
+    playOption1P: String,
+    playOption2P: String,
     randomMapping1P: List<Int>,
     randomMapping2P: List<Int>,
     playing: Boolean,
@@ -1665,8 +1939,13 @@ private fun ChartCanvas(
             val y = judgeY - (visibleStartBeat - currentBeat) * pixelsPerBeat
             val endY = judgeY - (noteEndBeat - currentBeat) * pixelsPerBeat
             if (maxOf(y, endY) < 0f || minOf(y, endY) > size.height) return@forEach
-            val rawLane = if (isSp) note.lane.mod(8) else note.lane.coerceIn(0, laneCount - 1)
-            fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (playOption) {
+            // Keep the source lane separate from the displayed lane. RANDOM
+            // changes only the position; note color must remain tied to the
+            // original chart lane (especially scratch vs. key colors).
+            val sourceLane = note.lane
+            val rawLane = if (isSp) sourceLane.mod(8) else sourceLane.coerceIn(0, laneCount - 1)
+            val laneOption = if (isSp) playOption else if (rawLane >= 8) playOption2P else playOption1P
+            fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (laneOption) {
                 "MIRROR" -> 8 - lane
                 "RANDOM" -> (mapping.indexOf(lane).takeIf { it >= 0 } ?: (lane - 1)) + 1
                 else -> lane
@@ -1693,7 +1972,7 @@ private fun ChartCanvas(
             }
             val left = laneStart + laneWidth * .12f
             val width = laneWidth * .76f
-            val sideLane = if (isSp) rawLane else if (rawLane >= 8) rawLane - 8 else rawLane
+            val sideLane = if (isSp) sourceLane.mod(8) else if (sourceLane >= 8) sourceLane - 8 else sourceLane
             val noteColor = if (!isSp) when (sideLane) {
                 0 -> PlayerRed
                 1, 3, 5, 7 -> ComposeColor.White
@@ -1761,6 +2040,12 @@ private fun difficultyName(value: String): String = when (value) {
     "A" -> "ANOTHER"
     "L" -> "LEGGENDARIA"
     else -> value
+}
+
+private fun String.optionAbbreviation(): String = when (this) {
+    "MIRROR" -> "MIR"
+    "RANDOM" -> "RAN"
+    else -> "NON"
 }
 
 @Composable

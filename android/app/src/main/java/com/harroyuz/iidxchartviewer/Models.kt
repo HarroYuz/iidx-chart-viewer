@@ -145,17 +145,21 @@ data class TextageSyncProgress(
 }
 
 data class PlayerSettings(
-    val speed: Int = 1,
+    val speed: Int = 4,
     val showBarLines: Boolean = true,
     val showBpmChanges: Boolean = true,
     val showMeasureNumbers: Boolean = true,
     val side: String = "1P",
     val playOption: String = "NONE",
+    val playOption1P: String = "NONE",
+    val playOption2P: String = "NONE",
     val randomMapping1P: List<Int> = (1..7).toList(),
     val randomMapping2P: List<Int> = (1..7).toList(),
 ) {
     val safeSpeed: Int get() = speed.coerceIn(1, 100)
     val safePlayOption: String get() = playOption.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"
+    val safePlayOption1P: String get() = playOption1P.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"
+    val safePlayOption2P: String get() = playOption2P.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"
     val safeRandomMapping1P: List<Int> get() = normalizeRandomMapping(randomMapping1P)
     val safeRandomMapping2P: List<Int> get() = normalizeRandomMapping(randomMapping2P)
 }

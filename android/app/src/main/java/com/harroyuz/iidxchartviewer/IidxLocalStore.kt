@@ -98,18 +98,57 @@ class IidxLocalStore(context: Context) {
         preferences.edit().putLong("textage_last_sync_at", timestamp).apply()
     }
 
-    fun loadPlayerSettings(): PlayerSettings = PlayerSettings(
-        speed = preferences.getInt("player_speed", 1).coerceIn(1, 100),
+    fun autoUpdateEnabled(): Boolean = preferences.getBoolean("auto_update_enabled", true)
+
+    fun setAutoUpdateEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("auto_update_enabled", enabled).apply()
+    }
+
+    fun updateLastCheckAt(): Long = preferences.getLong("update_last_check_at", 0L)
+
+    fun setUpdateLastCheckAt(timestamp: Long = System.currentTimeMillis()) {
+        preferences.edit().putLong("update_last_check_at", timestamp).apply()
+    }
+
+    fun loadPlayerSettings(): PlayerSettings {
+        val speed = loadPlayerSpeed()
+        val legacyOption = preferences.getString("player_option", null)
+            ?.takeIf(::isPlayerOption)
+            ?: if (preferences.getBoolean("player_mirror", false)) "MIRROR" else "NONE"
+        val option1P = preferences.getString("player_option_1p", null)
+            ?.takeIf(::isPlayerOption)
+            ?: legacyOption
+        val option2P = preferences.getString("player_option_2p", null)
+            ?.takeIf(::isPlayerOption)
+            ?: legacyOption
+        return PlayerSettings(
+        speed = speed,
         showBarLines = preferences.getBoolean("player_show_bar_lines", true),
         showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
         showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),
         side = preferences.getString("player_side", "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
-        playOption = preferences.getString("player_option", null)
-            ?.takeIf { it == "NONE" || it == "MIRROR" || it == "RANDOM" }
-            ?: if (preferences.getBoolean("player_mirror", false)) "MIRROR" else "NONE",
+        playOption = legacyOption,
+        playOption1P = option1P,
+        playOption2P = option2P,
         randomMapping1P = loadRandomMapping("player_random_1p"),
         randomMapping2P = loadRandomMapping("player_random_2p"),
-    )
+        )
+    }
+
+    private fun loadPlayerSpeed(): Int {
+        val migrated = if (preferences.getBoolean("player_speed_v2", false)) {
+            preferences.getInt("player_speed", 4)
+        } else {
+            val oldSpeed = preferences.getInt("player_speed", 4)
+            val nextSpeed = if (preferences.contains("player_speed")) oldSpeed * 4 else 4
+            preferences.edit()
+                .putInt("player_speed", nextSpeed.coerceIn(1, 100))
+                .putBoolean("player_speed_v2", true)
+                .apply()
+            nextSpeed
+        }
+        return migrated.coerceIn(1, 100)
+    }
 
     fun savePlayerSettings(settings: PlayerSettings) {
         preferences.edit()
@@ -119,11 +158,17 @@ class IidxLocalStore(context: Context) {
             .putBoolean("player_show_measure_numbers", settings.showMeasureNumbers)
             .putString("player_side", settings.side)
             .putString("player_option", settings.safePlayOption)
+            .putString("player_option_sp", settings.safePlayOption)
+            .putString("player_option_1p", settings.safePlayOption1P)
+            .putString("player_option_2p", settings.safePlayOption2P)
             .putBoolean("player_mirror", settings.safePlayOption == "MIRROR")
+            .putBoolean("player_speed_v2", true)
             .putString("player_random_1p", settings.safeRandomMapping1P.joinToString(","))
             .putString("player_random_2p", settings.safeRandomMapping2P.joinToString(","))
             .apply()
     }
+
+    private fun isPlayerOption(value: String): Boolean = value == "NONE" || value == "MIRROR" || value == "RANDOM"
 
     private fun loadRandomMapping(key: String): List<Int> = preferences.getString(key, null)
         ?.split(',')
