@@ -1246,8 +1246,8 @@ private fun ChartBrowserScreen(
         when {
             drawerState.isOpen -> closeDrawer()
             showingDetail -> onBack()
-            bjmDataPageVisible -> onDismissBjmData()
             settingsPageVisible -> onDismissSettings()
+            bjmDataPageVisible -> onRequestExit()
             else -> onRequestExit()
         }
     }
@@ -1294,7 +1294,6 @@ private fun ChartBrowserScreen(
                             selected = settingsPageVisible,
                             onClick = {
                                 closeDrawer()
-                                onDismissBjmData()
                                 onOpenSettings()
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
@@ -1343,7 +1342,27 @@ private fun ChartBrowserScreen(
             }
         },
     ) {
-        if (bjmDataPageVisible) {
+        if (settingsPageVisible) {
+            UpdateSettingsScreen(
+                enabled = autoUpdateEnabled,
+                onEnabledChange = onAutoUpdateEnabledChange,
+                onOpenMenu = { drawerScope.launch { drawerState.open() } },
+                textageProgress = textageProgress,
+                textageError = textageError,
+                textageLastSyncAt = textageLastSyncAt,
+                bjmMusicLastSyncAt = bjmMusicLastSyncAt,
+                bjmScoresLastSyncAt = bjmScoresLastSyncAt,
+                syncTarget = syncTarget,
+                syncStage = syncStage,
+                syncProgress = syncProgress,
+                bjmLoggedIn = state.bjmUser != null,
+                onFullDataSync = onFullDataSync,
+                onSyncTextage = onSyncTextage,
+                onSyncBjmMusic = onSyncBjmMusic,
+                onSyncBjmScores = onSyncBjmScores,
+                onClearChartCache = onClearChartCache,
+            )
+        } else if (bjmDataPageVisible) {
             BjmDataScreen(
                 state = state,
                 history = bjmHistory,
@@ -1365,26 +1384,6 @@ private fun ChartBrowserScreen(
                 onCalendarMonthChange = { bjmHistoryCalendarMonth = it },
                 listState = bjmHistoryListState,
                 modifier = modifier,
-            )
-        } else if (settingsPageVisible) {
-            UpdateSettingsScreen(
-                enabled = autoUpdateEnabled,
-                onEnabledChange = onAutoUpdateEnabledChange,
-                onOpenMenu = { drawerScope.launch { drawerState.open() } },
-                textageProgress = textageProgress,
-                textageError = textageError,
-                textageLastSyncAt = textageLastSyncAt,
-                bjmMusicLastSyncAt = bjmMusicLastSyncAt,
-                bjmScoresLastSyncAt = bjmScoresLastSyncAt,
-                syncTarget = syncTarget,
-                syncStage = syncStage,
-                syncProgress = syncProgress,
-                bjmLoggedIn = state.bjmUser != null,
-                onFullDataSync = onFullDataSync,
-                onSyncTextage = onSyncTextage,
-                onSyncBjmMusic = onSyncBjmMusic,
-                onSyncBjmScores = onSyncBjmScores,
-                onClearChartCache = onClearChartCache,
             )
         } else {
         val maxNumericVersionIndex = remember(state.charts, mode) {
