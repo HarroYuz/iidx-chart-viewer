@@ -232,8 +232,50 @@ class IidxLocalStore(context: Context) {
         preferences.edit().putLong("update_last_check_at", timestamp).apply()
     }
 
-    fun loadPlayerSettings(): PlayerSettings {
-        val speed = loadPlayerSpeed()
+    fun loadPlayerSettings(mode: String): PlayerSettings {
+        migrateLegacyPlayerSettings()
+        val suffix = playerModeSuffix(mode)
+        val speedKey = playerKey("speed", suffix)
+        val option = preferences.getString(playerKey("option", suffix), null)
+            ?.takeIf(::isPlayerOption)
+            ?: "NONE"
+        val option1P = preferences.getString(playerKey("option_1p", suffix), null)
+            ?.takeIf(::isPlayerOption)
+            ?: option
+        val option2P = preferences.getString(playerKey("option_2p", suffix), null)
+            ?.takeIf(::isPlayerOption)
+            ?: option
+        return PlayerSettings(
+        speed = preferences.getInt(speedKey, 1).coerceIn(1, 100),
+        speedMode = preferences.getString(playerKey("speed_mode", suffix), PLAYER_SPEED_MODE_FLOATING)
+            ?.takeIf { it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING }
+            ?: PLAYER_SPEED_MODE_FLOATING,
+        greenNumber = preferences.getInt(playerKey("green_number", suffix), PLAYER_GREEN_NUMBER_DEFAULT)
+            .coerceIn(PLAYER_GREEN_NUMBER_MIN, PLAYER_GREEN_NUMBER_MAX),
+        keepSpeedAcrossBpm = preferences.getBoolean(playerKey("keep_speed_across_bpm", suffix), false),
+        showBarLines = preferences.getBoolean(playerKey("show_bar_lines", suffix), true),
+        showBpmChanges = preferences.getBoolean(playerKey("show_bpm_changes", suffix), true),
+        showMeasureNumbers = preferences.getBoolean(playerKey("show_measure_numbers", suffix), true),
+        side = preferences.getString(playerKey("side", suffix), "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
+        playOption = option,
+        playOption1P = option1P,
+        playOption2P = option2P,
+        randomMapping1P = loadRandomMapping(playerKey("random_1p", suffix)),
+        randomMapping2P = loadRandomMapping(playerKey("random_2p", suffix)),
+        )
+    }
+
+    private fun migrateLegacyPlayerSettings() {
+        if (preferences.getInt("player_settings_mode_version", 0) >= 1) return
+        val legacy = loadLegacyPlayerSettings()
+        preferences.edit()
+            .putPlayerSettings("sp", legacy)
+            .putPlayerSettings("dp", legacy)
+            .putInt("player_settings_mode_version", 1)
+            .apply()
+    }
+
+    private fun loadLegacyPlayerSettings(): PlayerSettings {
         val legacyOption = preferences.getString("player_option", null)
             ?.takeIf(::isPlayerOption)
             ?: if (preferences.getBoolean("player_mirror", false)) "MIRROR" else "NONE"
@@ -244,22 +286,22 @@ class IidxLocalStore(context: Context) {
             ?.takeIf(::isPlayerOption)
             ?: legacyOption
         return PlayerSettings(
-        speed = speed,
-        speedMode = preferences.getString("player_speed_mode", PLAYER_SPEED_MODE_FLOATING)
-            ?.takeIf { it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING }
-            ?: PLAYER_SPEED_MODE_FLOATING,
-        greenNumber = preferences.getInt("player_green_number", PLAYER_GREEN_NUMBER_DEFAULT)
-            .coerceIn(PLAYER_GREEN_NUMBER_MIN, PLAYER_GREEN_NUMBER_MAX),
-        keepSpeedAcrossBpm = preferences.getBoolean("player_keep_speed_across_bpm", false),
-        showBarLines = preferences.getBoolean("player_show_bar_lines", true),
-        showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
-        showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),
-        side = preferences.getString("player_side", "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
-        playOption = legacyOption,
-        playOption1P = option1P,
-        playOption2P = option2P,
-        randomMapping1P = loadRandomMapping("player_random_1p"),
-        randomMapping2P = loadRandomMapping("player_random_2p"),
+            speed = loadPlayerSpeed(),
+            speedMode = preferences.getString("player_speed_mode", PLAYER_SPEED_MODE_FLOATING)
+                ?.takeIf { it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING }
+                ?: PLAYER_SPEED_MODE_FLOATING,
+            greenNumber = preferences.getInt("player_green_number", PLAYER_GREEN_NUMBER_DEFAULT)
+                .coerceIn(PLAYER_GREEN_NUMBER_MIN, PLAYER_GREEN_NUMBER_MAX),
+            keepSpeedAcrossBpm = preferences.getBoolean("player_keep_speed_across_bpm", false),
+            showBarLines = preferences.getBoolean("player_show_bar_lines", true),
+            showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
+            showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),
+            side = preferences.getString("player_side", "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
+            playOption = legacyOption,
+            playOption1P = option1P,
+            playOption2P = option2P,
+            randomMapping1P = loadRandomMapping("player_random_1p"),
+            randomMapping2P = loadRandomMapping("player_random_2p"),
         )
     }
 
@@ -286,25 +328,35 @@ class IidxLocalStore(context: Context) {
         return migrated.coerceIn(1, 100)
     }
 
-    fun savePlayerSettings(settings: PlayerSettings) {
+    fun savePlayerSettings(mode: String, settings: PlayerSettings) {
+        val suffix = playerModeSuffix(mode)
         preferences.edit()
-            .putInt("player_speed", settings.safeSpeed)
-            .putString("player_speed_mode", settings.safeSpeedMode)
-            .putInt("player_green_number", settings.safeGreenNumber)
-            .putBoolean("player_keep_speed_across_bpm", settings.keepSpeedAcrossBpm)
-            .putBoolean("player_show_bar_lines", settings.showBarLines)
-            .putBoolean("player_show_bpm_changes", settings.showBpmChanges)
-            .putBoolean("player_show_measure_numbers", settings.showMeasureNumbers)
-            .putString("player_side", settings.side)
-            .putString("player_option", settings.safePlayOption)
-            .putString("player_option_sp", settings.safePlayOption)
-            .putString("player_option_1p", settings.safePlayOption1P)
-            .putString("player_option_2p", settings.safePlayOption2P)
-            .putBoolean("player_mirror", settings.safePlayOption == "MIRROR")
-            .putInt("player_speed_scale_version", 2)
-            .putString("player_random_1p", settings.safeRandomMapping1P.joinToString(","))
-            .putString("player_random_2p", settings.safeRandomMapping2P.joinToString(","))
+            .putPlayerSettings(suffix, settings)
+            .putInt("player_settings_mode_version", 1)
             .apply()
+    }
+
+    private fun playerKey(name: String, suffix: String): String = "player_${name}_$suffix"
+
+    private fun playerModeSuffix(mode: String): String = if (mode == "DP") "dp" else "sp"
+
+    private fun android.content.SharedPreferences.Editor.putPlayerSettings(
+        suffix: String,
+        settings: PlayerSettings,
+    ): android.content.SharedPreferences.Editor = apply {
+        putInt(playerKey("speed", suffix), settings.safeSpeed)
+        putString(playerKey("speed_mode", suffix), settings.safeSpeedMode)
+        putInt(playerKey("green_number", suffix), settings.safeGreenNumber)
+        putBoolean(playerKey("keep_speed_across_bpm", suffix), settings.keepSpeedAcrossBpm)
+        putBoolean(playerKey("show_bar_lines", suffix), settings.showBarLines)
+        putBoolean(playerKey("show_bpm_changes", suffix), settings.showBpmChanges)
+        putBoolean(playerKey("show_measure_numbers", suffix), settings.showMeasureNumbers)
+        putString(playerKey("side", suffix), settings.side)
+        putString(playerKey("option", suffix), settings.safePlayOption)
+        putString(playerKey("option_1p", suffix), settings.safePlayOption1P)
+        putString(playerKey("option_2p", suffix), settings.safePlayOption2P)
+        putString(playerKey("random_1p", suffix), settings.safeRandomMapping1P.joinToString(","))
+        putString(playerKey("random_2p", suffix), settings.safeRandomMapping2P.joinToString(","))
     }
 
     private fun isPlayerOption(value: String): Boolean = value == "NONE" || value == "MIRROR" || value == "RANDOM"

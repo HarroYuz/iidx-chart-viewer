@@ -201,7 +201,8 @@ class MainActivity : ComponentActivity() {
     private var selectedSong by mutableStateOf<IidxChart?>(null)
     private var selectedChart by mutableStateOf<IidxChart?>(null)
     private var selectedChartData by mutableStateOf<TextageChartData?>(null)
-    private var playerSettings by mutableStateOf(PlayerSettings())
+    private var spPlayerSettings by mutableStateOf(PlayerSettings())
+    private var dpPlayerSettings by mutableStateOf(PlayerSettings())
     private var message by mutableStateOf<String?>(null)
     private var autoUpdateEnabled by mutableStateOf(true)
     private var updateChecking by mutableStateOf(false)
@@ -239,7 +240,8 @@ class MainActivity : ComponentActivity() {
         bjmMusicLastSyncAt = store.bjmMusicRevision()
         bjmScoresLastSyncAt = store.bjmScoresRevision()
         appState = IidxAppState()
-        playerSettings = store.loadPlayerSettings()
+        spPlayerSettings = store.loadPlayerSettings("SP")
+        dpPlayerSettings = store.loadPlayerSettings("DP")
 
         setContent {
             MaterialTheme(colorScheme = lightColorScheme(
@@ -264,7 +266,8 @@ class MainActivity : ComponentActivity() {
                     selectedChart = selectedChart,
                     chartData = selectedChartData,
                     chartLoading = chartLoading,
-                    playerSettings = playerSettings,
+                    spPlayerSettings = spPlayerSettings,
+                    dpPlayerSettings = dpPlayerSettings,
                     message = message,
                     localCatalogPresent = localCatalogPresent,
                     localDataLoading = localDataLoading,
@@ -927,9 +930,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun savePlayerSettings(settings: PlayerSettings) {
-        playerSettings = settings.copy(speed = settings.safeSpeed)
-        store.savePlayerSettings(playerSettings)
+    private fun savePlayerSettings(mode: String, settings: PlayerSettings) {
+        val normalized = settings.copy(speed = settings.safeSpeed)
+        if (mode == "DP") {
+            dpPlayerSettings = normalized
+        } else {
+            spPlayerSettings = normalized
+        }
+        store.savePlayerSettings(mode, normalized)
     }
 
     private fun clearChartCache() {
@@ -959,7 +967,8 @@ private fun IidxApp(
     selectedChart: IidxChart?,
     chartData: TextageChartData?,
     chartLoading: Boolean,
-    playerSettings: PlayerSettings,
+    spPlayerSettings: PlayerSettings,
+    dpPlayerSettings: PlayerSettings,
     message: String?,
     onDismissMessage: () -> Unit,
     autoUpdateEnabled: Boolean,
@@ -999,7 +1008,7 @@ private fun IidxApp(
     onBack: () -> Unit,
     onRequestExit: () -> Unit,
     onRetryChart: () -> Unit,
-    onPlayerSettingsChange: (PlayerSettings) -> Unit,
+    onPlayerSettingsChange: (String, PlayerSettings) -> Unit,
 ) {
     Scaffold(containerColor = Background) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -1106,7 +1115,7 @@ private fun IidxApp(
                         bjmIndex = bjmIndex,
                         chartData = chartData,
                         loading = chartLoading,
-                        playerSettings = playerSettings,
+                        playerSettings = if (selectedChart.mode == "DP") dpPlayerSettings else spPlayerSettings,
                         onBack = onBack,
                         onRetry = onRetryChart,
                         mode = browserMode,
@@ -1125,7 +1134,9 @@ private fun IidxApp(
                         },
                         onOpenChart = onOpenChart,
                         onCopyText = onCopyText,
-                        onPlayerSettingsChange = onPlayerSettingsChange,
+                        onPlayerSettingsChange = { settings ->
+                            onPlayerSettingsChange(selectedChart.mode, settings)
+                        },
                     )
                 } else if (selectedSong != null) {
                     val selectedSongKey = songGroupKey(selectedSong)
