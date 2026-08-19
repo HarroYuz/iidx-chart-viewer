@@ -8,7 +8,9 @@ import java.io.File
 
 class IidxLocalStore(context: Context) {
     private companion object {
-        const val CHART_CACHE_VERSION = 9
+        // Increment when chart timing/position decoding changes so old
+        // parsed charts are refreshed automatically on first access.
+        const val CHART_CACHE_VERSION = 10
         const val CATALOG_HEADER = "#iidx-catalog-v3"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 4
         const val BJM_INDEX_VERSION = 2
