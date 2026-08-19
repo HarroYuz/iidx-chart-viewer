@@ -604,7 +604,14 @@ internal object TextageParser {
             1,
         )
         var measureStart = 0
-        for (measure in 1..maxMeasure) {
+        // bms2jsh's statistics pass calls b(0, measure), so stat_pos is a
+        // cumulative coordinate over ln[0], ln[1], ... . The visible Textage
+        // chart begins at its actual sparse-array index (normally 2), and the
+        // old 1-based walk therefore moved every official note one bar late.
+        // Keep the 1-based fallback for synthetic/legacy sources that do not
+        // expose ln at all.
+        val firstMeasure = if (snapshot.measureTicks.isEmpty()) 1 else 0
+        for (measure in firstMeasure..maxMeasure) {
             val ticks = snapshot.measureTicks[measure] ?: TEXTAGE_BAR_TICKS
             if (position < measureStart + ticks || measure == maxMeasure) {
                 return measure to (position - measureStart).coerceAtLeast(0).toFloat()

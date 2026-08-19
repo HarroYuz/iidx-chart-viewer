@@ -100,6 +100,38 @@ class TextageClientTest {
     }
 
     @Test
+    fun alignsOfficialStatisticsWithDisplayedMeasureNumbers() {
+        val source = "<script>sp[2] = \"01\";</script>"
+        val chart = IidxChart(
+            id = "official-measure-alignment-test",
+            title = "test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 1,
+            version = "test",
+            bpm = "160",
+        )
+        val officialStub = """
+            ln=[384,384,384]; tc=[]; c1=[]; c2=[]; sp=[]; dp=[]; notes=1; measure=3;
+            function stat_insert() {}
+            function b() {
+                stat_insert(0, 1, 768, 0);
+            }
+        """.trimIndent()
+
+        val parsed = TextageParser.parseChart(
+            chart = chart,
+            source = source,
+            externalScripts = listOf(officialStub),
+            pageUrl = "https://textage.cc/score/0/test.html?1H700",
+        )
+
+        assertEquals(1, parsed.notes.size)
+        assertEquals(4f, parsed.notes.single().beat, 0.001f)
+    }
+
+    @Test
     fun groupsUnavailableTextageDifficultyWithItsSong() {
         val available = IidxChart(
             id = "textage-carapain-sph",
