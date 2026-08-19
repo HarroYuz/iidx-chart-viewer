@@ -6,6 +6,7 @@ dist/
 android/.gradle/
 android/**/build/
 android/local.properties
+android/signing/
 .idea/
 *.iml
 

@@ -33,6 +33,10 @@ android/app/build/outputs/apk/debug/app-debug.apk
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## 固定签名
+
+`android/signing/` 包含用于保持 APK 更新兼容性的签名文件，已加入 Git 忽略列表，不会提交到仓库。需要生成与现有 APK 相同签名的设备，应先通过安全方式复制该目录，再执行上面的构建命令；未复制时会回退到本机默认 debug 签名，生成的 APK 不能覆盖已有安装包。
+
 ## 项目主页
 
 <https://github.com/HarroYuz/iidx-chart-viewer>

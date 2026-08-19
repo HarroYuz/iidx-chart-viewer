@@ -1,4 +1,11 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+val sharedSigningProperties = rootProject.file("signing/signing.properties")
+val sharedSigning = Properties().takeIf { sharedSigningProperties.isFile }?.apply {
+    sharedSigningProperties.inputStream().use(::load)
+}
+val sharedSigningFile = sharedSigning?.getProperty("storeFile")?.let(rootProject::file)
 
 plugins {
     id("com.android.application")
@@ -16,6 +23,23 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.5.21"
+    }
+
+    signingConfigs {
+        if (sharedSigning != null && sharedSigningFile != null) {
+            create("sharedDebug") {
+                storeFile = sharedSigningFile
+                storePassword = sharedSigning.getProperty("storePassword")
+                keyAlias = sharedSigning.getProperty("keyAlias")
+                keyPassword = sharedSigning.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (sharedSigning != null) signingConfig = signingConfigs.getByName("sharedDebug")
+        }
     }
 
     buildFeatures {
