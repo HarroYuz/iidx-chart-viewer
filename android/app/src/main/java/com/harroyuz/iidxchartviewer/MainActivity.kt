@@ -178,6 +178,9 @@ class MainActivity : ComponentActivity() {
     private var textageSyncing by mutableStateOf(false)
     private var textageProgress by mutableStateOf<TextageSyncProgress?>(null)
     private var textageError by mutableStateOf<String?>(null)
+    private var textageLastSyncAt by mutableStateOf(0L)
+    private var bjmMusicLastSyncAt by mutableStateOf(0L)
+    private var bjmScoresLastSyncAt by mutableStateOf(0L)
     private var chartLoading by mutableStateOf(false)
     private var selectedSong by mutableStateOf<IidxChart?>(null)
     private var selectedChart by mutableStateOf<IidxChart?>(null)
@@ -215,6 +218,9 @@ class MainActivity : ComponentActivity() {
         textageClient = TextageClient()
         githubUpdateClient = GithubUpdateClient()
         autoUpdateEnabled = store.autoUpdateEnabled()
+        textageLastSyncAt = store.textageLastSyncAt()
+        bjmMusicLastSyncAt = store.bjmMusicRevision()
+        bjmScoresLastSyncAt = store.bjmScoresRevision()
         appState = IidxAppState()
         playerSettings = store.loadPlayerSettings()
 
@@ -234,6 +240,9 @@ class MainActivity : ComponentActivity() {
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
                     textageError = textageError,
+                    textageLastSyncAt = textageLastSyncAt,
+                    bjmMusicLastSyncAt = bjmMusicLastSyncAt,
+                    bjmScoresLastSyncAt = bjmScoresLastSyncAt,
                     selectedSong = selectedSong,
                     selectedChart = selectedChart,
                     chartData = selectedChartData,
@@ -528,9 +537,9 @@ class MainActivity : ComponentActivity() {
         startDataSync(DataSyncTarget.FULL) {
             syncStage = "正在同步 Textage 曲目库"
             syncTextageData()
+            syncStage = "正在同步 BJM 曲目库"
+            syncBjmMusicData()
             if (appState.bjmUser != null) {
-                syncStage = "正在同步 BJM 曲目库"
-                syncBjmMusicData()
                 syncStage = "正在同步用户成绩"
                 syncBjmScoresData()
             }
@@ -554,10 +563,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun syncBjmMusicOnly() {
-        if (appState.bjmUser == null) {
-            message = "请先登录 BJM"
-            return
-        }
         startDataSync(DataSyncTarget.BJM_MUSIC) {
             syncStage = "正在同步 BJM 曲目库"
             syncBjmMusicData()
@@ -624,6 +629,7 @@ class MainActivity : ComponentActivity() {
                 store.setTextageSyncComplete(true)
                 store.setTextageLastSyncAt(textageRevision)
             }
+            textageLastSyncAt = textageRevision
             textageProgress = TextageSyncProgress(
                 initial = initial,
                 completed = textageProgress?.total ?: imported.size,
@@ -650,6 +656,7 @@ class MainActivity : ComponentActivity() {
             store.setBjmMusicRevision(revision)
             store.save(nextState)
         }
+        bjmMusicLastSyncAt = revision
     }
 
     private suspend fun syncBjmScoresData(): Int {
@@ -677,6 +684,7 @@ class MainActivity : ComponentActivity() {
             store.setBjmScoresRevision(revision)
             store.save(nextState)
         }
+        bjmScoresLastSyncAt = revision
         return result.scores.size
     }
 
@@ -824,6 +832,9 @@ private fun IidxApp(
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
     textageError: String?,
+    textageLastSyncAt: Long,
+    bjmMusicLastSyncAt: Long,
+    bjmScoresLastSyncAt: Long,
     selectedSong: IidxChart?,
     selectedChart: IidxChart?,
     chartData: TextageChartData?,
@@ -902,6 +913,9 @@ private fun IidxApp(
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
                     textageError = textageError,
+                    textageLastSyncAt = textageLastSyncAt,
+                    bjmMusicLastSyncAt = bjmMusicLastSyncAt,
+                    bjmScoresLastSyncAt = bjmScoresLastSyncAt,
                     onLogin = onLogin,
                     onLogoutBjm = onLogoutBjm,
                     onOpenBjmData = onOpenBjmData,
@@ -1037,6 +1051,9 @@ private fun ChartBrowserScreen(
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
     textageError: String?,
+    textageLastSyncAt: Long,
+    bjmMusicLastSyncAt: Long,
+    bjmScoresLastSyncAt: Long,
     onLogin: () -> Unit,
     onOpenBjmData: () -> Unit,
     onRefreshTextage: () -> Unit,
@@ -1114,7 +1131,7 @@ private fun ChartBrowserScreen(
                             modifier = Modifier.padding(horizontal = 12.dp),
                         )
                         NavigationDrawerItem(
-                            label = { Text("BJM数据") },
+                            label = { Text("BJM历史记录") },
                             selected = bjmDataPageVisible,
                             onClick = {
                                 closeDrawer()
@@ -1193,6 +1210,9 @@ private fun ChartBrowserScreen(
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },
                 textageProgress = textageProgress,
                 textageError = textageError,
+                textageLastSyncAt = textageLastSyncAt,
+                bjmMusicLastSyncAt = bjmMusicLastSyncAt,
+                bjmScoresLastSyncAt = bjmScoresLastSyncAt,
                 syncTarget = syncTarget,
                 syncStage = syncStage,
                 bjmLoggedIn = state.bjmUser != null,
@@ -1592,6 +1612,13 @@ private fun formatBjmHistoryTime(value: Long): String {
     }.getOrElse { "时间 $value" }
 }
 
+private fun formatDataSourceLastSync(value: Long): String =
+    if (value <= 0L) {
+        "最后更新：未同步"
+    } else {
+        "最后更新：${formatBjmHistoryTime(value)}"
+    }
+
 @Composable
 private fun UpdateSettingsScreen(
     enabled: Boolean,
@@ -1599,6 +1626,9 @@ private fun UpdateSettingsScreen(
     onOpenMenu: () -> Unit,
     textageProgress: TextageSyncProgress?,
     textageError: String?,
+    textageLastSyncAt: Long,
+    bjmMusicLastSyncAt: Long,
+    bjmScoresLastSyncAt: Long,
     syncTarget: DataSyncTarget?,
     syncStage: String?,
     bjmLoggedIn: Boolean,
@@ -1667,6 +1697,7 @@ private fun UpdateSettingsScreen(
             SettingsActionRow(
                 title = "Textage 曲目库",
                 subtitle = "同步 Textage 曲目元数据",
+                lastUpdatedAt = textageLastSyncAt,
                 actionLabel = if (syncTarget == DataSyncTarget.TEXTAGE) "同步中…" else "同步",
                 enabled = !syncing,
                 onClick = onSyncTextage,
@@ -1674,17 +1705,15 @@ private fun UpdateSettingsScreen(
             SettingsActionRow(
                 title = "BJM 曲目库",
                 subtitle = "同步 BJM 曲目元数据",
-                actionLabel = when {
-                    syncTarget == DataSyncTarget.BJM_MUSIC -> "同步中…"
-                    !bjmLoggedIn -> "需登录"
-                    else -> "同步"
-                },
-                enabled = !syncing && bjmLoggedIn,
+                lastUpdatedAt = bjmMusicLastSyncAt,
+                actionLabel = if (syncTarget == DataSyncTarget.BJM_MUSIC) "同步中…" else "同步",
+                enabled = !syncing,
                 onClick = onSyncBjmMusic,
             )
             SettingsActionRow(
                 title = "用户成绩库",
                 subtitle = "同步当前 BJM 用户成绩",
+                lastUpdatedAt = bjmScoresLastSyncAt,
                 actionLabel = when {
                     syncTarget == DataSyncTarget.BJM_SCORES -> "同步中…"
                     !bjmLoggedIn -> "需登录"
@@ -1718,6 +1747,7 @@ private fun UpdateSettingsScreen(
 private fun SettingsActionRow(
     title: String,
     subtitle: String,
+    lastUpdatedAt: Long? = null,
     actionLabel: String,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -1730,6 +1760,10 @@ private fun SettingsActionRow(
             Text(title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             Text(subtitle, color = Muted, fontSize = 12.sp)
+            if (lastUpdatedAt != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(formatDataSourceLastSync(lastUpdatedAt), color = Muted, fontSize = 11.sp)
+            }
         }
         TextButton(onClick = onClick, enabled = enabled) {
             Text(actionLabel, color = if (enabled) Purple else Muted)
