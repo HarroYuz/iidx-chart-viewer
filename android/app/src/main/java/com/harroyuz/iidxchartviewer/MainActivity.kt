@@ -253,6 +253,7 @@ class MainActivity : ComponentActivity() {
                     syncStage = syncStage,
                     onDismissMessage = { message = null },
                     onLogin = ::openBjmLogin,
+                    onLogoutBjm = ::logoutBjm,
                     onOpenBjmData = { bjmDataPageVisible = true },
                     onRefreshTextage = ::refreshTextage,
                     onFullDataSync = ::syncAllData,
@@ -294,22 +295,42 @@ class MainActivity : ComponentActivity() {
                 }
                 val loadedFromDisk = store.load()
                 val loadedBjmHistory = store.loadBjmHistory()
+                val authenticatedState = if (loadedFromDisk.bjmUser != null) {
+                    val currentUser = runCatching {
+                        bjmClient.probeAuthMe()
+                    }.getOrNull()
+                    if (currentUser == null) {
+                        val loggedOut = loadedFromDisk.copy(bjmUser = null)
+                        withContext(Dispatchers.Main) {
+                            bjmClient.clearSession()
+                        }
+                        withContext(Dispatchers.IO) { store.save(loggedOut) }
+                        withContext(Dispatchers.Main) {
+                            message = "BJM 登录已失效，请重新登录"
+                        }
+                        loggedOut
+                    } else {
+                        loadedFromDisk.copy(bjmUser = currentUser)
+                    }
+                } else {
+                    loadedFromDisk
+                }
                 withContext(Dispatchers.Main) {
-                    appState = loadedFromDisk
+                    appState = authenticatedState
                     bjmHistory = loadedBjmHistory
                     localDataProgress = .45f
                     localDataStage = if (
-                        loadedFromDisk.charts.isNotEmpty() && loadedFromDisk.songGroups.isEmpty()
+                        authenticatedState.charts.isNotEmpty() && authenticatedState.songGroups.isEmpty()
                     ) {
                         "正在构建本地曲目组"
                     } else {
                         "正在读取用户成绩索引"
                     }
                 }
-                val loaded = if (loadedFromDisk.charts.isNotEmpty() && loadedFromDisk.songGroups.isEmpty()) {
-                    val migrated = loadedFromDisk.copy(
+                val loaded = if (authenticatedState.charts.isNotEmpty() && authenticatedState.songGroups.isEmpty()) {
+                    val migrated = authenticatedState.copy(
                         songGroups = withContext(Dispatchers.Default) {
-                            buildSongGroups(loadedFromDisk.charts)
+                            buildSongGroups(authenticatedState.charts)
                         },
                     )
                     withContext(Dispatchers.IO) { store.save(migrated) }
@@ -382,6 +403,20 @@ class MainActivity : ComponentActivity() {
     private fun openBjmLogin() {
         loginPending = true
         loginLauncher.launch(Intent(this, BjmLoginActivity::class.java))
+    }
+
+    private fun logoutBjm() {
+        clearBjmSession("已退出 BJM")
+    }
+
+    private fun clearBjmSession(messageText: String) {
+        bjmClient.clearSession()
+        val loggedOut = appState.copy(bjmUser = null)
+        appState = loggedOut
+        message = messageText
+        lifecycleScope.launch(Dispatchers.IO) {
+            store.save(loggedOut)
+        }
     }
 
     private fun openGithub() {
@@ -618,7 +653,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun syncBjmScoresData(): Int {
-        val result = bjmClient.fetchScores()
+        val result = try {
+            bjmClient.fetchScores()
+        } catch (error: BjmException) {
+            if (error.message?.contains("登录态不可用") == true) {
+                clearBjmSession("BJM 登录已失效，请重新登录")
+            }
+            throw error
+        }
         val mergedHistory = withContext(Dispatchers.IO) {
             val previousHistory = store.loadBjmHistory()
             appendBjmHistory(previousHistory, result.scores).also(store::saveBjmHistory)
@@ -801,6 +843,7 @@ private fun IidxApp(
     syncStage: String?,
     settingsPageVisible: Boolean,
     onLogin: () -> Unit,
+    onLogoutBjm: () -> Unit,
     onOpenBjmData: () -> Unit,
     onRefreshTextage: () -> Unit,
     onFullDataSync: () -> Unit,
@@ -860,6 +903,7 @@ private fun IidxApp(
                     textageProgress = textageProgress,
                     textageError = textageError,
                     onLogin = onLogin,
+                    onLogoutBjm = onLogoutBjm,
                     onOpenBjmData = onOpenBjmData,
                     onRefreshTextage = onRefreshTextage,
                     onFullDataSync = onFullDataSync,
@@ -1010,6 +1054,7 @@ private fun ChartBrowserScreen(
     onDismissSettings: () -> Unit,
     bjmDataPageVisible: Boolean,
     onDismissBjmData: () -> Unit,
+    onLogoutBjm: () -> Unit,
     autoUpdateEnabled: Boolean,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onClearChartCache: () -> Unit,
@@ -1139,6 +1184,7 @@ private fun ChartBrowserScreen(
                 bjmIndex = bjmIndex,
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },
                 onLogin = onLogin,
+                onLogout = onLogoutBjm,
             )
         } else if (settingsPageVisible) {
             UpdateSettingsScreen(
@@ -1388,6 +1434,7 @@ private fun BjmDataScreen(
     bjmIndex: BjmIndex,
     onOpenMenu: () -> Unit,
     onLogin: () -> Unit,
+    onLogout: () -> Unit,
 ) {
     val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
     val historyCharts = remember(state.songGroups, state.charts, bjmIndex.songMusicIds) {
@@ -1407,7 +1454,7 @@ private fun BjmDataScreen(
             ) {
                 Text("☰", color = Ink, fontSize = 24.sp)
             }
-            Text("BJM数据", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("BJM历史记录", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
         if (state.bjmUser == null) {
@@ -1424,12 +1471,23 @@ private fun BjmDataScreen(
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                Text(
-                    "${state.bjmUser.name.ifBlank { state.bjmUser.id }} · ${history.size} 条历史记录",
-                    color = Muted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                )
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${state.bjmUser.name.ifBlank { state.bjmUser.id }} · ${history.size} 条历史记录",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = onLogout,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("登出", color = Purple, fontSize = 12.sp)
+                    }
+                }
                 if (history.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("暂无历史成绩", color = Muted, fontSize = 14.sp)

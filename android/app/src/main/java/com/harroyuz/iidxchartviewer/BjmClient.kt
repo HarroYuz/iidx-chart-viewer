@@ -24,6 +24,11 @@ class BjmClient {
 
     fun probeAuthMe(): BjmUser? = authMe()
 
+    fun clearSession() {
+        cookieManager.removeAllCookies(null)
+        cookieManager.flush()
+    }
+
     suspend fun fetchMusicDatabase(): List<BjmMusic> = withContext(Dispatchers.IO) {
         val version = runCatching {
             val response = requestPublic("$musicDatabaseOrigin/mdb/ver.json")
