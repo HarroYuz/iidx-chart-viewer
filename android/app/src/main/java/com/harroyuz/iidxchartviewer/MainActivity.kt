@@ -1726,6 +1726,7 @@ private fun BjmHistoryRow(
         Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Column(
                 Modifier.weight(1f).fillMaxHeight(),
+                verticalArrangement = if (subtitle == null) Arrangement.SpaceBetween else Arrangement.Top,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Text(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -1733,7 +1734,7 @@ private fun BjmHistoryRow(
                         Text(it, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1)
                     }
                 }
-                Spacer(Modifier.weight(1f))
+                if (subtitle != null) Spacer(Modifier.weight(1f))
                 Text(
                     difficulty,
                     color = difficultyColor(chart?.difficulty ?: difficultyCode(record.noteId)),
