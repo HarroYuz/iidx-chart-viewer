@@ -2158,7 +2158,7 @@ private fun HistoryCalendar(
                     week.forEach { date ->
                         Box(
                             Modifier.weight(1f)
-                                .height(36.dp)
+                                .height(40.dp)
                                 .clip(RoundedCornerShape(5.dp))
                                 .background(if (date.value == selectedDate) Purple.copy(alpha = .16f) else ComposeColor.Transparent)
                                 .clickable { onDateSelected(date.value) },
@@ -2180,8 +2180,8 @@ private fun HistoryCalendar(
                             )
                             recordCounts[date.value]?.takeIf { it > 0 }?.let { count ->
                                 Text(
-                                    count.toString(),
-                                    color = if (date.inCurrentMonth) Purple else Muted,
+                                    "${count}项",
+                                    color = NormalBlue,
                                     fontSize = 8.sp,
                                     lineHeight = 8.sp,
                                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
