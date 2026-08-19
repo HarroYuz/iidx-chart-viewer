@@ -31,6 +31,75 @@ class TextageClientTest {
     }
 
     @Test
+    fun executesTextageScriptsBeforeReadingChartArrays() {
+        val source = """
+            <script>
+                if(k){
+                    sp[1] = "01";
+                    sp[2] = sp[1];
+                } else {
+                    sp[1] = "02";
+                }
+            </script>
+        """.trimIndent()
+        val chart = IidxChart(
+            id = "js-engine-test",
+            title = "test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 0,
+            version = "test",
+            bpm = "160",
+        )
+
+        val parsed = TextageParser.parseChart(
+            chart = chart,
+            source = source,
+            externalScripts = listOf("ln=[];tc=[];c1=[];c2=[];sp=[];dp=[];k=1;notes=2;measure=2;"),
+            pageUrl = "https://textage.cc/score/0/test.html?1H700",
+        )
+
+        assertEquals(2, parsed.chart.notes)
+        assertEquals(2, parsed.notes.size)
+    }
+
+    @Test
+    fun usesOfficialStatisticsEventsForNotePositions() {
+        val source = "<script>sp[1] = \"01\";</script>"
+        val chart = IidxChart(
+            id = "js-events-test",
+            title = "test",
+            mode = "SP",
+            difficulty = "H",
+            level = 1,
+            notes = 0,
+            version = "test",
+            bpm = "160",
+        )
+        val officialStub = """
+            ln=[]; tc=[]; c1=[]; c2=[]; sp=[]; dp=[]; notes=2; measure=2;
+            function stat_insert() {}
+            function b() {
+                stat_insert(0, 1, 0, 0);
+                stat_insert(0, 2, 384, 96);
+            }
+        """.trimIndent()
+
+        val parsed = TextageParser.parseChart(
+            chart = chart,
+            source = source,
+            externalScripts = listOf(officialStub),
+            pageUrl = "https://textage.cc/score/0/test.html?1H700",
+        )
+
+        assertEquals(2, parsed.notes.size)
+        assertEquals(0f, parsed.notes[0].beat, 0.001f)
+        assertEquals(4f, parsed.notes[1].beat, 0.001f)
+        assertEquals(1f, parsed.notes[1].holdBeats, 0.001f)
+    }
+
+    @Test
     fun groupsUnavailableTextageDifficultyWithItsSong() {
         val available = IidxChart(
             id = "textage-carapain-sph",
