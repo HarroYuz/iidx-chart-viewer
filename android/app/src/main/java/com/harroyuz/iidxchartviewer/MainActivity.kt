@@ -2294,7 +2294,7 @@ private fun HistoryPickerCell(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(label, color = if (selected) Purple else Ink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text("${count}条", color = if (count > 0) Purple else Muted, fontSize = 8.sp, lineHeight = 8.sp)
+        Text("${count}项", color = if (count > 0) Purple else Muted, fontSize = 8.sp, lineHeight = 8.sp)
     }
 }
 
