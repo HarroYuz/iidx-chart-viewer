@@ -120,6 +120,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.Normalizer
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 private val Ink = ComposeColor(0xFF171722)
@@ -165,6 +167,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var githubUpdateClient: GithubUpdateClient
 
     private var appState by mutableStateOf(IidxAppState())
+    private var bjmHistory by mutableStateOf<List<BjmScore>>(emptyList())
     private var bjmIndex by mutableStateOf(BjmIndex())
     private var localCatalogPresent by mutableStateOf(false)
     private var localDataLoading by mutableStateOf(true)
@@ -187,6 +190,7 @@ class MainActivity : ComponentActivity() {
     private var updateDownloadProgress by mutableStateOf<Float?>(null)
     private var updateInstalling by mutableStateOf(false)
     private var settingsPageVisible by mutableStateOf(false)
+    private var bjmDataPageVisible by mutableStateOf(false)
     private var loginPending = false
     private var exitToastShown = false
 
@@ -225,6 +229,7 @@ class MainActivity : ComponentActivity() {
             )) {
                 IidxApp(
                     state = appState,
+                    bjmHistory = bjmHistory,
                     bjmIndex = bjmIndex,
                     textageSyncing = textageSyncing,
                     textageProgress = textageProgress,
@@ -248,7 +253,7 @@ class MainActivity : ComponentActivity() {
                     syncStage = syncStage,
                     onDismissMessage = { message = null },
                     onLogin = ::openBjmLogin,
-                    onOpenBjmProfile = {},
+                    onOpenBjmData = { bjmDataPageVisible = true },
                     onRefreshTextage = ::refreshTextage,
                     onFullDataSync = ::syncAllData,
                     onSyncTextage = ::syncTextageOnly,
@@ -259,6 +264,8 @@ class MainActivity : ComponentActivity() {
                     settingsPageVisible = settingsPageVisible,
                     onOpenSettings = { settingsPageVisible = true },
                     onDismissSettings = { settingsPageVisible = false },
+                    bjmDataPageVisible = bjmDataPageVisible,
+                    onDismissBjmData = { bjmDataPageVisible = false },
                     onAutoUpdateEnabledChange = {
                         autoUpdateEnabled = it
                         store.setAutoUpdateEnabled(it)
@@ -286,8 +293,10 @@ class MainActivity : ComponentActivity() {
                     localDataStage = "正在读取本地曲目"
                 }
                 val loadedFromDisk = store.load()
+                val loadedBjmHistory = store.loadBjmHistory()
                 withContext(Dispatchers.Main) {
                     appState = loadedFromDisk
+                    bjmHistory = loadedBjmHistory
                     localDataProgress = .45f
                     localDataStage = if (
                         loadedFromDisk.charts.isNotEmpty() && loadedFromDisk.songGroups.isEmpty()
@@ -610,6 +619,10 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun syncBjmScoresData(): Int {
         val result = bjmClient.fetchScores()
+        val mergedHistory = withContext(Dispatchers.IO) {
+            val previousHistory = store.loadBjmHistory()
+            appendBjmHistory(previousHistory, result.scores).also(store::saveBjmHistory)
+        }
         val nextState = appState.copy(
             bjmScores = result.scores,
             bjmUser = result.user,
@@ -617,6 +630,7 @@ class MainActivity : ComponentActivity() {
         )
         val revision = System.currentTimeMillis()
         appState = nextState
+        bjmHistory = mergedHistory
         withContext(Dispatchers.IO) {
             store.setBjmScoresRevision(revision)
             store.save(nextState)
@@ -762,6 +776,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun IidxApp(
     state: IidxAppState,
+    bjmHistory: List<BjmScore>,
     bjmIndex: BjmIndex,
     localCatalogPresent: Boolean,
     textageSyncing: Boolean,
@@ -786,7 +801,7 @@ private fun IidxApp(
     syncStage: String?,
     settingsPageVisible: Boolean,
     onLogin: () -> Unit,
-    onOpenBjmProfile: () -> Unit,
+    onOpenBjmData: () -> Unit,
     onRefreshTextage: () -> Unit,
     onFullDataSync: () -> Unit,
     onSyncTextage: () -> Unit,
@@ -796,6 +811,8 @@ private fun IidxApp(
     onCheckForUpdates: () -> Unit,
     onOpenSettings: () -> Unit,
     onDismissSettings: () -> Unit,
+    bjmDataPageVisible: Boolean,
+    onDismissBjmData: () -> Unit,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onClearChartCache: () -> Unit,
     onDismissUpdate: () -> Unit,
@@ -835,6 +852,7 @@ private fun IidxApp(
                 // query, style and LazyColumn position survive a round trip.
                 ChartBrowserScreen(
                     state = state,
+                    bjmHistory = bjmHistory,
                     bjmIndex = bjmIndex,
                     mode = browserMode,
                     onModeChange = { browserMode = it },
@@ -842,7 +860,7 @@ private fun IidxApp(
                     textageProgress = textageProgress,
                     textageError = textageError,
                     onLogin = onLogin,
-                    onOpenBjmProfile = onOpenBjmProfile,
+                    onOpenBjmData = onOpenBjmData,
                     onRefreshTextage = onRefreshTextage,
                     onFullDataSync = onFullDataSync,
                     onSyncTextage = onSyncTextage,
@@ -856,6 +874,8 @@ private fun IidxApp(
                     settingsPageVisible = settingsPageVisible,
                     onOpenSettings = onOpenSettings,
                     onDismissSettings = onDismissSettings,
+                    bjmDataPageVisible = bjmDataPageVisible,
+                    onDismissBjmData = onDismissBjmData,
                     autoUpdateEnabled = autoUpdateEnabled,
                     onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
                     onClearChartCache = onClearChartCache,
@@ -966,6 +986,7 @@ private fun IidxApp(
 @Composable
 private fun ChartBrowserScreen(
     state: IidxAppState,
+    bjmHistory: List<BjmScore>,
     bjmIndex: BjmIndex,
     mode: String,
     onModeChange: (String) -> Unit,
@@ -973,7 +994,7 @@ private fun ChartBrowserScreen(
     textageProgress: TextageSyncProgress?,
     textageError: String?,
     onLogin: () -> Unit,
-    onOpenBjmProfile: () -> Unit,
+    onOpenBjmData: () -> Unit,
     onRefreshTextage: () -> Unit,
     onFullDataSync: () -> Unit,
     onSyncTextage: () -> Unit,
@@ -987,6 +1008,8 @@ private fun ChartBrowserScreen(
     settingsPageVisible: Boolean,
     onOpenSettings: () -> Unit,
     onDismissSettings: () -> Unit,
+    bjmDataPageVisible: Boolean,
+    onDismissBjmData: () -> Unit,
     autoUpdateEnabled: Boolean,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onClearChartCache: () -> Unit,
@@ -1012,6 +1035,7 @@ private fun ChartBrowserScreen(
         when {
             drawerState.isOpen -> closeDrawer()
             showingDetail -> onBack()
+            bjmDataPageVisible -> onDismissBjmData()
             settingsPageVisible -> onDismissSettings()
             else -> onRequestExit()
         }
@@ -1036,10 +1060,21 @@ private fun ChartBrowserScreen(
                     Column(Modifier.weight(1f)) {
                         NavigationDrawerItem(
                             label = { Text("曲目列表") },
-                            selected = !settingsPageVisible,
+                            selected = !settingsPageVisible && !bjmDataPageVisible,
                             onClick = {
                                 closeDrawer()
                                 onDismissSettings()
+                                onDismissBjmData()
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                        NavigationDrawerItem(
+                            label = { Text("BJM数据") },
+                            selected = bjmDataPageVisible,
+                            onClick = {
+                                closeDrawer()
+                                onDismissSettings()
+                                onOpenBjmData()
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
                         )
@@ -1048,6 +1083,7 @@ private fun ChartBrowserScreen(
                             selected = settingsPageVisible,
                             onClick = {
                                 closeDrawer()
+                                onDismissBjmData()
                                 onOpenSettings()
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
@@ -1096,7 +1132,15 @@ private fun ChartBrowserScreen(
             }
         },
     ) {
-        if (settingsPageVisible) {
+        if (bjmDataPageVisible) {
+            BjmDataScreen(
+                state = state,
+                history = bjmHistory,
+                bjmIndex = bjmIndex,
+                onOpenMenu = { drawerScope.launch { drawerState.open() } },
+                onLogin = onLogin,
+            )
+        } else if (settingsPageVisible) {
             UpdateSettingsScreen(
                 enabled = autoUpdateEnabled,
                 onEnabledChange = onAutoUpdateEnabledChange,
@@ -1233,7 +1277,7 @@ private fun ChartBrowserScreen(
                     Modifier.size(36.dp)
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (state.bjmUser == null) Panel else Purple.copy(alpha = .18f))
-                        .clickable { if (state.bjmUser == null) onLogin() else onOpenBjmProfile() },
+                        .clickable(onClick = onOpenBjmData),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (state.bjmUser == null) {
@@ -1338,6 +1382,159 @@ private fun ChartBrowserScreen(
 }
 
 @Composable
+private fun BjmDataScreen(
+    state: IidxAppState,
+    history: List<BjmScore>,
+    bjmIndex: BjmIndex,
+    onOpenMenu: () -> Unit,
+    onLogin: () -> Unit,
+) {
+    val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
+    val historyCharts = remember(state.songGroups, state.charts, bjmIndex.songMusicIds) {
+        buildBjmHistoryChartIndex(state, bjmIndex, chartsById)
+    }
+    val musicById = remember(state.bjmMusic) { state.bjmMusic.associateBy { it.musicId } }
+
+    Column(Modifier.fillMaxSize().background(Background)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = onOpenMenu,
+                modifier = Modifier.size(42.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) {
+                Text("☰", color = Ink, fontSize = 24.sp)
+            }
+            Text("BJM数据", color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+        HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
+        if (state.bjmUser == null) {
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("请先登录 BJM", color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(14.dp))
+                OutlinedButton(onClick = onLogin) {
+                    Text("登录 BJM", color = Purple, fontWeight = FontWeight.Bold)
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Text(
+                    "${state.bjmUser.name.ifBlank { state.bjmUser.id }} · ${history.size} 条历史记录",
+                    color = Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+                if (history.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("暂无历史成绩", color = Muted, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 18.dp),
+                    ) {
+                        items(history, key = ::bjmHistoryRecordKey) { record ->
+                            BjmHistoryRow(
+                                record = record,
+                                chart = historyCharts[record.key],
+                                music = musicById[record.musicId],
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BjmHistoryRow(
+    record: BjmScore,
+    chart: IidxChart?,
+    music: BjmMusic?,
+) {
+    val title = chart?.let { displayTitle(it.title, it.sourceLabel) }
+        ?: music?.title?.takeIf { it.isNotBlank() }
+        ?: "未知曲目"
+    val difficulty = chart?.let { "${difficultyName(it.difficulty)} ${it.level}" }
+        ?: "${if (record.playStyle == 1) "DP" else "SP"} ${difficultyName(difficultyCode(record.noteId))}"
+    val rank = chart?.let { scoreRankName(record.exScore, it.notes) }
+        ?: "—"
+
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 9.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Spacer(Modifier.height(2.dp))
+                Text(difficulty, color = difficultyColor(chart?.difficulty ?: difficultyCode(record.noteId)), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(formatBjmHistoryTime(record.time), color = Muted, fontSize = 10.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                StrokedText(
+                    text = clearFlagDetailName(record.clearFlag),
+                    fillColor = clearFlagColor(record.clearFlag),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text("$rank ${record.exScore}", color = NormalBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("${record.missCount} BP", color = Muted, fontSize = 10.sp)
+            }
+        }
+        HorizontalDivider(color = ComposeColor(0xFFE5E3EC), modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+private fun buildBjmHistoryChartIndex(
+    state: IidxAppState,
+    bjmIndex: BjmIndex,
+    chartsById: Map<String, IidxChart>,
+): Map<String, IidxChart> = buildMap {
+    state.songGroups.forEach { group ->
+        val musicId = bjmIndex.songMusicIds[group.key] ?: return@forEach
+        group.chartIds
+            .mapNotNull { chartsById[it] }
+            .groupBy { chart ->
+                "$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"
+            }
+            .forEach { (key, candidates) ->
+                val chart = candidates.maxWithOrNull(
+                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                ) ?: return@forEach
+                put(key, chart)
+            }
+    }
+}
+
+private fun difficultyCode(noteId: Int): String = when (noteId) {
+    0 -> "B"
+    1 -> "N"
+    2 -> "H"
+    3 -> "A"
+    4 -> "L"
+    else -> "?"
+}
+
+private fun formatBjmHistoryTime(value: Long): String {
+    if (value <= 0L) return "时间未知"
+    val millis = when {
+        value < 10_000_000_000L -> value * 1_000L
+        value > 100_000_000_000_000L -> value / 1_000L
+        else -> value
+    }
+    return runCatching {
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(millis))
+    }.getOrElse { "时间 $value" }
+}
+
+@Composable
 private fun UpdateSettingsScreen(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -1410,8 +1607,8 @@ private fun UpdateSettingsScreen(
                 modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 2.dp),
             )
             SettingsActionRow(
-                title = "曲目库",
-                subtitle = "同步曲目元数据",
+                title = "Textage 曲目库",
+                subtitle = "同步 Textage 曲目元数据",
                 actionLabel = if (syncTarget == DataSyncTarget.TEXTAGE) "同步中…" else "同步",
                 enabled = !syncing,
                 onClick = onSyncTextage,

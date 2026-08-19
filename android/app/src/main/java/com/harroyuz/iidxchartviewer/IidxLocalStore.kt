@@ -102,6 +102,25 @@ class IidxLocalStore(context: Context) {
             .apply()
     }
 
+    /**
+     * BJM history is intentionally kept outside IidxAppState's best-score
+     * record. The current score list may replace old best records, while this
+     * list must retain every later update returned by BJM.
+     */
+    fun loadBjmHistory(): List<BjmScore> = runCatching {
+        val array = JSONArray(preferences.getString("bjm_history", "[]"))
+        buildList {
+            for (index in 0 until array.length()) {
+                add(array.getJSONObject(index).toScore())
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    fun saveBjmHistory(history: List<BjmScore>) {
+        val records = JSONArray().apply { history.forEach { put(it.toJson()) } }
+        preferences.edit().putString("bjm_history", records.toString()).apply()
+    }
+
     fun loadBjmIndex(): BjmIndex? = runCatching {
         val json = JSONObject(preferences.getString("bjm_index", null) ?: return null)
         if (json.optInt("version") != BJM_INDEX_VERSION) return null
