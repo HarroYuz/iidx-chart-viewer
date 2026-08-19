@@ -1541,6 +1541,33 @@ private fun ChartBrowserScreen(
             }
             if (filterExpanded) {
                 Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SearchDimensionCheckbox(
+                        label = "曲风",
+                        checked = searchGenreEnabled,
+                        enabled = !searchGenreEnabled || selectedSearchDimensionCount > 1,
+                        onCheckedChange = { searchGenreEnabled = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SearchDimensionCheckbox(
+                        label = "曲名",
+                        checked = searchTitleEnabled,
+                        enabled = !searchTitleEnabled || selectedSearchDimensionCount > 1,
+                        onCheckedChange = { searchTitleEnabled = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SearchDimensionCheckbox(
+                        label = "曲师",
+                        checked = searchComposerEnabled,
+                        enabled = !searchComposerEnabled || selectedSearchDimensionCount > 1,
+                        onCheckedChange = { searchComposerEnabled = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(
                     Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1568,41 +1595,6 @@ private fun ChartBrowserScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                     ) { Text("重置", color = Muted, fontSize = 11.sp) }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SearchDimensionCheckbox(
-                        label = "曲风",
-                        checked = searchGenreEnabled,
-                        enabled = !searchGenreEnabled || selectedSearchDimensionCount > 1,
-                        onCheckedChange = { searchGenreEnabled = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                    SearchDimensionCheckbox(
-                        label = "曲名",
-                        checked = searchTitleEnabled,
-                        enabled = !searchTitleEnabled || selectedSearchDimensionCount > 1,
-                        onCheckedChange = { searchTitleEnabled = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                    SearchDimensionCheckbox(
-                        label = "曲师",
-                        checked = searchComposerEnabled,
-                        enabled = !searchComposerEnabled || selectedSearchDimensionCount > 1,
-                        onCheckedChange = { searchComposerEnabled = it },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            if (selectedSearchDimensionCount < 3) {
-                Text(
-                    "仅筛选${searchDimensions.joinToString("/")}",
-                    color = Muted,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 1.dp),
-                )
             }
             val activeFilterSummary = buildString {
                 selectedVersion?.let { append(it) }
@@ -1611,9 +1603,18 @@ private fun ChartBrowserScreen(
                     append("LEVEL $it")
                 }
             }
-            if (!filterExpanded && activeFilterSummary.isNotBlank()) {
+            val collapsedFilterSummary = buildString {
+                if (selectedSearchDimensionCount < 3) {
+                    append("仅筛选${searchDimensions.joinToString("/")}")
+                }
+                if (activeFilterSummary.isNotBlank()) {
+                    if (isNotEmpty()) append("，")
+                    append("已筛选：$activeFilterSummary")
+                }
+            }
+            if (!filterExpanded && collapsedFilterSummary.isNotBlank()) {
                 Text(
-                    "已筛选：$activeFilterSummary",
+                    collapsedFilterSummary,
                     color = Muted,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(horizontal = 20.dp),
