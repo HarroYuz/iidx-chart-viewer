@@ -1769,9 +1769,9 @@ private fun BjmHistoryRow(
                 verticalArrangement = if (subtitle == null) Arrangement.SpaceBetween else Arrangement.Top,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    Text(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    AutoScrollingText(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold)
                     subtitle?.let {
-                        Text(it, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1)
+                        AutoScrollingText(it, color = Muted, fontSize = 10.sp, lineHeight = 11.sp)
                     }
                 }
                 if (subtitle != null) Spacer(Modifier.weight(1f))
