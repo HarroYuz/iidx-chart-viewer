@@ -182,9 +182,16 @@ internal object TextageJsEngine {
         var __textageOriginalStatInsert = stat_insert;
         stat_insert = function(side, lane, position, length) {
             __textageRawEvents.push([side, lane, position, length || 0]);
+            if (!stat_arr[side]) stat_arr[side] = [];
+            if (!stat_arr[side][lane]) stat_arr[side][lane] = [];
             return __textageOriginalStatInsert(side, lane, position, length);
         };
-        stat_arr = [[[],[],[],[],[],[],[],[]],[[],[],[],[],[],[],[]],[[]]];
+        stat_arr = [[], [], []];
+        for (var __statSide = 0; __statSide < 3; __statSide++) {
+            for (var __statLane = 0; __statLane < 16; __statLane++) {
+                stat_arr[__statSide][__statLane] = [];
+            }
+        }
         stat_pos = 0;
         stat_on = 1;
         b(0, measure);

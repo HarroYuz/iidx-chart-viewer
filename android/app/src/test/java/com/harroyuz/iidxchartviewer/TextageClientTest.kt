@@ -100,6 +100,28 @@ class TextageClientTest {
     }
 
     @Test
+    fun toleratesOfficialStatisticsSlotsOutsideVisibleKeys() {
+        val officialStub = """
+            ln=[]; tc=[]; c1=[]; c2=[]; sp=[]; dp=[]; notes=1; measure=1;
+            function stat_insert(s_side, s_key, s_num, s_len) {
+                var slot = stat_arr[s_side][s_key];
+                if (slot.length == 0) slot[0] = [s_num, s_len];
+            }
+            function b() {
+                stat_insert(1, 15, 0, 0);
+            }
+        """.trimIndent()
+
+        val snapshot = TextageJsEngine.execute(
+            pageUrl = "https://textage.cc/score/21/closewld.html?DH900",
+            pageSource = "",
+            externalScripts = listOf(officialStub),
+        )
+
+        assertTrue(snapshot != null)
+    }
+
+    @Test
     fun alignsOfficialStatisticsWithDisplayedMeasureNumbers() {
         val source = "<script>sp[2] = \"01\";</script>"
         val chart = IidxChart(
