@@ -1,6 +1,7 @@
 package com.harroyuz.iidxchartviewer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,7 +36,9 @@ class PlayerSettingsTest {
             ),
             0.0001f,
         )
-        assertTrue(PlayerSettings().safeSpeedMode == PLAYER_SPEED_MODE_HI)
+        assertTrue(PlayerSettings().safeSpeedMode == PLAYER_SPEED_MODE_FLOATING)
         assertEquals(PLAYER_GREEN_NUMBER_DEFAULT, PlayerSettings().safeGreenNumber)
+        assertEquals(500, PLAYER_GREEN_NUMBER_DEFAULT)
+        assertFalse(PlayerSettings().keepSpeedAcrossBpm)
     }
 }

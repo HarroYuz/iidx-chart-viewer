@@ -1,6 +1,6 @@
 # IIDX 谱面浏览器
 
-当前版本：0.7.0
+当前版本：0.7.1
 
 一个纯 Android 的 beatmania IIDX 谱面浏览与本地播放器应用，使用 Kotlin 和 Jetpack Compose 实现。
 
@@ -9,7 +9,7 @@
 - 从 Textage 获取曲目元数据，谱面在用户打开具体难度时按需获取并缓存。
 - 曲目列表支持曲名/曲师搜索，以及按版本和等级筛选；点击曲目可查看各难度和 BJM 成绩。
 - 支持 SP / DP、难度切换、搜索、BPM 变化、变拍号和长押谱面。
-- 提供本地谱面播放器：播放/暂停、进度拖动、前后小节、Hi-Speed、Floating Hi-Speed（绿字）、1P / 2P、MIRROR、RANDOM 轨道配置、小节线和变速线显示。
+- 提供本地谱面播放器：播放/暂停、进度拖动、前后小节、Hi-Speed、Floating Hi-Speed（绿字）、可选不随 BPM 变化的固定流速、1P / 2P、MIRROR、RANDOM 轨道配置、小节线和变速线显示。
 - 支持登录 BJM 并同步成绩，按 BJM 音乐数据库匹配曲目、难度、EX SCORE 和 MISS COUNT；登录流程使用应用内 WebView。
 - 设置中支持全量数据同步，也可以分别同步 Textage 曲目库、BJM 曲目库和用户成绩库；已同步的数据索引会保存到本地。
 - 首页菜单提供谱面数据更新、GitHub Release 更新检查和项目主页入口。

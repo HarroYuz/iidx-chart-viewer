@@ -1,10 +1,10 @@
 package com.harroyuz.iidxchartviewer
 
-internal const val PLAYER_SPEED_MODE_HI = "HI_SPEED"
 internal const val PLAYER_SPEED_MODE_FLOATING = "FLOATING_HI_SPEED"
+internal const val PLAYER_SPEED_MODE_HI = "HI_SPEED"
 internal const val PLAYER_GREEN_NUMBER_MIN = 10
 internal const val PLAYER_GREEN_NUMBER_MAX = 9999
-internal const val PLAYER_GREEN_NUMBER_DEFAULT = 300
+internal const val PLAYER_GREEN_NUMBER_DEFAULT = 500
 
 /**
  * Converts the player's speed setting into musical pixels per beat. Floating
@@ -234,8 +234,9 @@ data class TextageSyncProgress(
 
 data class PlayerSettings(
     val speed: Int = 1,
-    val speedMode: String = PLAYER_SPEED_MODE_HI,
+    val speedMode: String = PLAYER_SPEED_MODE_FLOATING,
     val greenNumber: Int = PLAYER_GREEN_NUMBER_DEFAULT,
+    val keepSpeedAcrossBpm: Boolean = false,
     val showBarLines: Boolean = true,
     val showBpmChanges: Boolean = true,
     val showMeasureNumbers: Boolean = true,
@@ -249,7 +250,7 @@ data class PlayerSettings(
     val safeSpeed: Int get() = speed.coerceIn(1, 100)
     val safeSpeedMode: String get() = speedMode.takeIf {
         it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING
-    } ?: PLAYER_SPEED_MODE_HI
+    } ?: PLAYER_SPEED_MODE_FLOATING
     val safeGreenNumber: Int get() = greenNumber.coerceIn(PLAYER_GREEN_NUMBER_MIN, PLAYER_GREEN_NUMBER_MAX)
     val safePlayOption: String get() = playOption.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"
     val safePlayOption1P: String get() = playOption1P.takeIf { it == "MIRROR" || it == "RANDOM" } ?: "NONE"

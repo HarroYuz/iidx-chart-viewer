@@ -245,11 +245,12 @@ class IidxLocalStore(context: Context) {
             ?: legacyOption
         return PlayerSettings(
         speed = speed,
-        speedMode = preferences.getString("player_speed_mode", PLAYER_SPEED_MODE_HI)
+        speedMode = preferences.getString("player_speed_mode", PLAYER_SPEED_MODE_FLOATING)
             ?.takeIf { it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING }
-            ?: PLAYER_SPEED_MODE_HI,
+            ?: PLAYER_SPEED_MODE_FLOATING,
         greenNumber = preferences.getInt("player_green_number", PLAYER_GREEN_NUMBER_DEFAULT)
             .coerceIn(PLAYER_GREEN_NUMBER_MIN, PLAYER_GREEN_NUMBER_MAX),
+        keepSpeedAcrossBpm = preferences.getBoolean("player_keep_speed_across_bpm", false),
         showBarLines = preferences.getBoolean("player_show_bar_lines", true),
         showBpmChanges = preferences.getBoolean("player_show_bpm_changes", true),
         showMeasureNumbers = preferences.getBoolean("player_show_measure_numbers", true),
@@ -290,6 +291,7 @@ class IidxLocalStore(context: Context) {
             .putInt("player_speed", settings.safeSpeed)
             .putString("player_speed_mode", settings.safeSpeedMode)
             .putInt("player_green_number", settings.safeGreenNumber)
+            .putBoolean("player_keep_speed_across_bpm", settings.keepSpeedAcrossBpm)
             .putBoolean("player_show_bar_lines", settings.showBarLines)
             .putBoolean("player_show_bpm_changes", settings.showBpmChanges)
             .putBoolean("player_show_measure_numbers", settings.showMeasureNumbers)

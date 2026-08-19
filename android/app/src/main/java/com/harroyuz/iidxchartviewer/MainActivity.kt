@@ -3557,10 +3557,9 @@ private fun PlayerConfigBox(
     val shape = RoundedCornerShape(10.dp)
     val isFloating = settings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING
     val activeSpeedValue = if (isFloating) settings.safeGreenNumber else settings.safeSpeed
-    val activeSpeedLabel = if (isFloating) "Floating Hi-Speed" else "Hi-Speed"
     val summary = buildString {
-        append("流速: $activeSpeedLabel $activeSpeedValue")
-        if (!isFloating) append("x")
+        if (isFloating) append("FHS $activeSpeedValue")
+        else append("Hi-Speed ${activeSpeedValue}x")
         if (isSp) {
             append(", ${settings.side}")
             settings.safePlayOption.optionAbbreviation()
@@ -3658,6 +3657,9 @@ private fun PlayerConfigBox(
                         }
                     },
                 )
+                if (!isFloating) {
+                    Text("x", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 2.dp))
+                }
                 TextButton(
                     onClick = {
                         onSettingsChange(
@@ -3671,6 +3673,14 @@ private fun PlayerConfigBox(
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("+", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlayerSwitchSetting("流速不随BPM变化", settings.keepSpeedAcrossBpm) {
+                    onSettingsChange(settings.copy(keepSpeedAcrossBpm = it))
+                }
             }
             if (isSp) {
                 PlayerSettingChoiceRow(
@@ -4108,6 +4118,7 @@ private fun ChartPlayer(
                     speed = safeSpeed,
                     speedMode = safeSpeedMode,
                     greenNumber = safeGreenNumber,
+                    keepSpeedAcrossBpm = settings.keepSpeedAcrossBpm,
                     showBarLines = settings.showBarLines,
                     showBpmChanges = settings.showBpmChanges,
                     showMeasureNumbers = settings.showMeasureNumbers,
@@ -4136,6 +4147,7 @@ private fun ChartPlayer(
                             speed = next.safeSpeed,
                             speedMode = next.safeSpeedMode,
                             greenNumber = next.safeGreenNumber,
+                            keepSpeedAcrossBpm = next.keepSpeedAcrossBpm,
                         ),
                     )
                 },
@@ -4153,6 +4165,7 @@ private fun ChartCanvas(
     speed: Int,
     speedMode: String,
     greenNumber: Int,
+    keepSpeedAcrossBpm: Boolean,
     showBarLines: Boolean,
     showBpmChanges: Boolean,
     showMeasureNumbers: Boolean,
@@ -4181,20 +4194,33 @@ private fun ChartCanvas(
         initialBpm = data.bpmAt(0f),
         judgeDistancePx = judgeDistancePx,
     )
+    val pixelsPerSecond = pixelsPerBeat * data.bpmAt(0f).coerceAtLeast(1f) / 60f
     val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
     val labelPadding = with(LocalDensity.current) { 4.dp.toPx() }
     val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
     val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
+    val currentSeconds = data.secondsAtBeat(currentBeat)
+    fun pixelsFromCurrentBeat(beat: Float): Float = if (keepSpeedAcrossBpm) {
+        (data.secondsAtBeat(beat) - currentSeconds) * pixelsPerSecond
+    } else {
+        (beat - currentBeat) * pixelsPerBeat
+    }
     Canvas(
         modifier
             .onSizeChanged { canvasHeightPx = it.height.toFloat() }
-            .pointerInput(data.chart.id, speed, speedMode, greenNumber) {
-            detectVerticalDragGestures { _, dragAmount ->
-                if (!latestPlaying) {
-                    latestOnCurrentBeatChange(latestCurrentBeat + dragAmount / pixelsPerBeat)
+            .pointerInput(data.chart.id, speed, speedMode, greenNumber, keepSpeedAcrossBpm) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (!latestPlaying) {
+                        if (keepSpeedAcrossBpm) {
+                            latestOnCurrentBeatChange(
+                                data.beatAtSeconds(data.secondsAtBeat(latestCurrentBeat) + dragAmount / pixelsPerSecond),
+                            )
+                        } else {
+                            latestOnCurrentBeatChange(latestCurrentBeat + dragAmount / pixelsPerBeat)
+                        }
+                    }
                 }
-            }
         },
     ) {
         val isSp = data.chart.mode != "DP"
@@ -4282,15 +4308,25 @@ private fun ChartCanvas(
         val measureBaseline = { y: Float -> (y - 4f).coerceAtLeast(labelTextSize) }
         val bpmBaseline = { y: Float -> (y - 4f).coerceAtLeast(labelTextSize) }
         if (showBarLines || showMeasureNumbers) {
+            val firstVisibleBeat = if (keepSpeedAcrossBpm) {
+                data.beatAtSeconds((currentSeconds - size.height / pixelsPerSecond).coerceAtLeast(0f))
+            } else {
+                currentBeat - size.height / pixelsPerBeat
+            }
+            val lastVisibleBeat = if (keepSpeedAcrossBpm) {
+                data.beatAtSeconds(currentSeconds + size.height / pixelsPerSecond)
+            } else {
+                currentBeat + size.height / pixelsPerBeat
+            }
             val firstMeasure = (
-                data.measureAt(currentBeat - size.height / pixelsPerBeat) - 2
+                data.measureAt(firstVisibleBeat) - 2
             ).coerceAtLeast(1)
             val lastMeasure = (
-                data.measureAt(currentBeat + size.height / pixelsPerBeat) + 2
+                data.measureAt(lastVisibleBeat) + 2
             ).coerceAtMost(data.measureCount())
             for (measure in firstMeasure..lastMeasure) {
                 val measureBeat = data.measureStart(measure)
-                val y = judgeY - (measureBeat - currentBeat) * pixelsPerBeat
+                val y = judgeY - pixelsFromCurrentBeat(measureBeat)
                 if (y in -2f..size.height + 2f) {
                     if (showBarLines) {
                         drawLine(
@@ -4321,7 +4357,7 @@ private fun ChartCanvas(
         }
         if (showBpmChanges) {
             data.bpmChanges.filter { it.beat > 0f }.forEach { change ->
-                val y = judgeY - (change.beat - currentBeat) * pixelsPerBeat
+                val y = judgeY - pixelsFromCurrentBeat(change.beat)
                 if (y in -labelTextSize..size.height + labelTextSize) {
                     drawLine(
                         PlayerBpmGreen,
@@ -4352,8 +4388,8 @@ private fun ChartCanvas(
             val noteEndBeat = note.beat + note.holdBeats
             if (noteEndBeat < currentBeat - 0.001f) return@forEach
             val visibleStartBeat = maxOf(note.beat, currentBeat)
-            val y = judgeY - (visibleStartBeat - currentBeat) * pixelsPerBeat
-            val endY = judgeY - (noteEndBeat - currentBeat) * pixelsPerBeat
+            val y = judgeY - pixelsFromCurrentBeat(visibleStartBeat)
+            val endY = judgeY - pixelsFromCurrentBeat(noteEndBeat)
             if (maxOf(y, endY) < 0f || minOf(y, endY) > size.height) return@forEach
             // Keep the source lane separate from the displayed lane. RANDOM
             // changes only the position; note color must remain tied to the
