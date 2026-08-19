@@ -1298,7 +1298,10 @@ private fun ChartBrowserScreen(
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },
                 onLogin = onLogin,
                 onLogout = onLogoutBjm,
-                onOpenSong = onOpenSongFromBjmHistory,
+                onOpenSong = { chart ->
+                    onModeChange(chart.mode)
+                    onOpenSongFromBjmHistory(chart)
+                },
                 query = bjmHistoryQuery,
                 onQueryChange = { bjmHistoryQuery = it },
                 selectedDate = bjmHistoryDate,
