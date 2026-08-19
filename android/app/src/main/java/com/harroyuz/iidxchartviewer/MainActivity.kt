@@ -154,8 +154,16 @@ private val PlayerSkyBlue = ComposeColor(0xFF28A9E0)
 private val PlayerBpmGreen = ComposeColor(0xFF63D38A)
 private val PlayerMeasureText = ComposeColor(0xFFB7BAC6)
 private val MusicTitleFilterRegex = Regex("[^\\p{L}\\p{N}]")
-private const val TEXTAGE_SYNC_INTERVAL_MS = 24L * 60L * 60L * 1000L
 private const val UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
+
+private fun isSameLocalDate(timestamp: Long, now: Long = System.currentTimeMillis()): Boolean {
+    if (timestamp <= 0L) return false
+    val timestampCalendar = Calendar.getInstance().apply { timeInMillis = timestamp }
+    val nowCalendar = Calendar.getInstance().apply { timeInMillis = now }
+    return timestampCalendar.get(Calendar.ERA) == nowCalendar.get(Calendar.ERA) &&
+        timestampCalendar.get(Calendar.YEAR) == nowCalendar.get(Calendar.YEAR) &&
+        timestampCalendar.get(Calendar.DAY_OF_YEAR) == nowCalendar.get(Calendar.DAY_OF_YEAR)
+}
 
 private enum class DataSyncTarget {
     FULL,
@@ -180,6 +188,8 @@ class MainActivity : ComponentActivity() {
     private var syncTarget by mutableStateOf<DataSyncTarget?>(null)
     private var syncStage by mutableStateOf<String?>(null)
     private var syncProgress by mutableStateOf<Float?>(null)
+    private var syncProgressBase = 0f
+    private var syncProgressWeight = 1f
     private var textageSyncing by mutableStateOf(false)
     private var textageProgress by mutableStateOf<TextageSyncProgress?>(null)
     private var textageError by mutableStateOf<String?>(null)
@@ -403,10 +413,10 @@ class MainActivity : ComponentActivity() {
                     // completed catalog should open immediately; the update
                     // button performs the next metadata refresh on demand.
                     val needsBootstrap = loaded.charts.isEmpty() || !store.isTextageSyncComplete()
-                    val dailySyncDue = System.currentTimeMillis() - store.fullSyncLastAt() >= TEXTAGE_SYNC_INTERVAL_MS
+                    val automaticSyncTargets = automaticDataSyncTargets()
                     when {
                         needsBootstrap -> syncAllData()
-                        dailySyncDue -> syncAllData(automatic = true)
+                        automaticSyncTargets.isNotEmpty() -> syncAllData(automatic = true)
                     }
                     checkForUpdatesIfDue()
                 }
@@ -521,6 +531,8 @@ class MainActivity : ComponentActivity() {
         syncTarget = target
         syncStage = null
         syncProgress = if (target == DataSyncTarget.FULL) 0f else null
+        syncProgressBase = 0f
+        syncProgressWeight = 1f
         lifecycleScope.launch {
             try {
                 action()
@@ -546,25 +558,62 @@ class MainActivity : ComponentActivity() {
 
     private fun syncAllData(automatic: Boolean = false) {
         startDataSync(DataSyncTarget.FULL) {
-            val hasScores = appState.bjmUser != null
-            val otherStepCount = if (hasScores) 3 else 2
-            val otherStepWeight = 0.5f / otherStepCount
-            syncStage = "正在同步 Textage 曲目库"
-            syncTextageData()
-            syncProgress = 0.5f
-            syncStage = "正在同步 BJM 曲目库"
-            syncBjmMusicData()
-            syncProgress = 0.5f + otherStepWeight
-            if (appState.bjmUser != null) {
-                syncStage = "正在同步用户成绩"
-                syncBjmScoresData()
-                syncProgress = 0.5f + otherStepWeight * 2f
+            val targets = if (automatic) automaticDataSyncTargets() else fullDataSyncTargets()
+            if (targets.isEmpty()) return@startDataSync
+            val totalSteps = targets.size + 1
+            var completedSteps = 0
+            fun beginStep(stage: String) {
+                syncStage = stage
+                syncProgressBase = completedSteps.toFloat() / totalSteps
+                syncProgressWeight = 1f / totalSteps
+                syncProgress = syncProgressBase
+            }
+            fun completeStep() {
+                completedSteps += 1
+                syncProgress = completedSteps.toFloat() / totalSteps
+            }
+
+            targets.forEach { target ->
+                when (target) {
+                    DataSyncTarget.TEXTAGE -> {
+                        beginStep("正在同步 Textage 曲目库")
+                        syncTextageData()
+                    }
+                    DataSyncTarget.BJM_MUSIC -> {
+                        beginStep("正在同步 BJM 曲目库")
+                        syncBjmMusicData()
+                    }
+                    DataSyncTarget.BJM_SCORES -> {
+                        beginStep("正在同步用户成绩")
+                        syncBjmScoresData()
+                    }
+                    DataSyncTarget.FULL -> Unit
+                }
+                completeStep()
             }
             syncStage = "正在构建索引"
             rebuildFullBjmIndex()
+            completeStep()
             syncProgress = 1f
-            store.setFullSyncLastAt()
             if (!automatic) message = "全量数据同步完成"
+        }
+    }
+
+    private fun fullDataSyncTargets(): List<DataSyncTarget> = buildList {
+        add(DataSyncTarget.TEXTAGE)
+        add(DataSyncTarget.BJM_MUSIC)
+        if (appState.bjmUser != null) add(DataSyncTarget.BJM_SCORES)
+    }
+
+    private fun automaticDataSyncTargets(now: Long = System.currentTimeMillis()): List<DataSyncTarget> = buildList {
+        if (!store.isTextageSyncComplete() || !isSameLocalDate(store.textageLastSyncAt(), now)) {
+            add(DataSyncTarget.TEXTAGE)
+        }
+        if (appState.bjmMusic.isEmpty() || !isSameLocalDate(store.bjmMusicRevision(), now)) {
+            add(DataSyncTarget.BJM_MUSIC)
+        }
+        if (appState.bjmUser != null && !isSameLocalDate(store.bjmScoresRevision(), now)) {
+            add(DataSyncTarget.BJM_SCORES)
         }
     }
 
@@ -624,7 +673,7 @@ class MainActivity : ComponentActivity() {
                         val progress = TextageSyncProgress(initial, completed, total, title)
                         textageProgress = progress
                         if (syncTarget == DataSyncTarget.FULL) {
-                            syncProgress = progress.fraction * 0.5f
+                            syncProgress = syncProgressBase + progress.fraction * syncProgressWeight
                         } else if (syncTarget == DataSyncTarget.TEXTAGE) {
                             syncProgress = progress.fraction
                         }
