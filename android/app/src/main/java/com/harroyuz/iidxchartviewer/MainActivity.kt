@@ -98,6 +98,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.SpanStyle
@@ -3554,8 +3555,12 @@ private fun PlayerConfigBox(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(10.dp)
+    val isFloating = settings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING
+    val activeSpeedValue = if (isFloating) settings.safeGreenNumber else settings.safeSpeed
+    val activeSpeedLabel = if (isFloating) "Floating Hi-Speed" else "Hi-Speed"
     val summary = buildString {
-        append("Hi-Speed: ${settings.safeSpeed}x")
+        append("流速: $activeSpeedLabel $activeSpeedValue")
+        if (!isFloating) append("x")
         if (isSp) {
             append(", ${settings.side}")
             settings.safePlayOption.optionAbbreviation()
@@ -3567,7 +3572,9 @@ private fun PlayerConfigBox(
             if (options.any { it != "NON" }) append(", ${options.joinToString("/")}")
         }
     }
-    var speedInput by remember(settings.safeSpeed) { mutableStateOf(settings.safeSpeed.toString()) }
+    var speedInput by remember(settings.safeSpeed, settings.safeSpeedMode, settings.safeGreenNumber) {
+        mutableStateOf(activeSpeedValue.toString())
+    }
     Column(
         modifier.fillMaxWidth()
             .clip(shape)
@@ -3598,19 +3605,45 @@ private fun PlayerConfigBox(
                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Hi-Speed", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                Text("流速:", color = Muted, fontSize = 11.sp, modifier = Modifier.width(34.dp))
+                PlayerSpeedModeChoice(
+                    label = "Floating Hi-Speed",
+                    selected = isFloating,
+                    onClick = { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_FLOATING)) },
+                )
+                Spacer(Modifier.width(3.dp))
+                PlayerSpeedModeChoice(
+                    label = "Hi-Speed",
+                    selected = !isFloating,
+                    onClick = { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_HI)) },
+                )
+                Spacer(Modifier.weight(1f))
                 TextButton(
-                    onClick = { onSettingsChange(settings.copy(speed = (settings.safeSpeed - 1).coerceAtLeast(1))) },
+                    onClick = {
+                        onSettingsChange(
+                            if (isFloating) {
+                                settings.copy(greenNumber = (settings.safeGreenNumber - 1).coerceAtLeast(PLAYER_GREEN_NUMBER_MIN))
+                            } else {
+                                settings.copy(speed = (settings.safeSpeed - 1).coerceAtLeast(1))
+                            },
+                        )
+                    },
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("−", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                 BasicTextField(
                     value = speedInput,
                     onValueChange = { value ->
-                        val digits = value.filter(Char::isDigit).take(3)
+                        val digits = value.filter(Char::isDigit).take(if (isFloating) 4 else 3)
                         speedInput = digits
                         digits.toIntOrNull()?.let { next ->
-                            onSettingsChange(settings.copy(speed = next.coerceIn(1, 100)))
+                            if (isFloating) {
+                                if (next in PLAYER_GREEN_NUMBER_MIN..PLAYER_GREEN_NUMBER_MAX) {
+                                    onSettingsChange(settings.copy(greenNumber = next))
+                                }
+                            } else {
+                                onSettingsChange(settings.copy(speed = next.coerceIn(1, 100)))
+                            }
                         }
                     },
                     modifier = Modifier.width(46.dp).height(34.dp)
@@ -3626,7 +3659,15 @@ private fun PlayerConfigBox(
                     },
                 )
                 TextButton(
-                    onClick = { onSettingsChange(settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(100))) },
+                    onClick = {
+                        onSettingsChange(
+                            if (isFloating) {
+                                settings.copy(greenNumber = (settings.safeGreenNumber + 1).coerceAtMost(PLAYER_GREEN_NUMBER_MAX))
+                            } else {
+                                settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(100))
+                            },
+                        )
+                    },
                     modifier = Modifier.size(34.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) { Text("+", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
@@ -3714,6 +3755,33 @@ private fun PlayerConfigBox(
                 PlayerSwitchSetting("变速线", settings.showBpmChanges) { onSettingsChange(settings.copy(showBpmChanges = it)) }
             }
         }
+    }
+}
+
+@Composable
+private fun PlayerSpeedModeChoice(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(5.dp)
+    Box(
+        Modifier
+            .height(28.dp)
+            .clip(shape)
+            .background(if (selected) Purple.copy(alpha = .13f) else Background)
+            .border(1.dp, if (selected) Purple else ComposeColor(0xFFCAC7D6), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (selected) Purple else Muted,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
     }
 }
 
@@ -3907,6 +3975,8 @@ private fun ChartPlayer(
     var currentBeat by remember(data.chart.id) { mutableStateOf(0f) }
     var configExpanded by remember(data.chart.id) { mutableStateOf(false) }
     val safeSpeed = settings.safeSpeed
+    val safeSpeedMode = settings.safeSpeedMode
+    val safeGreenNumber = settings.safeGreenNumber
     val duration = data.durationBeats.coerceAtLeast(4f)
     val totalMeasures = data.measureCount().coerceAtLeast(1)
     val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
@@ -4036,6 +4106,8 @@ private fun ChartPlayer(
                     data = data,
                     currentBeat = currentBeat,
                     speed = safeSpeed,
+                    speedMode = safeSpeedMode,
+                    greenNumber = safeGreenNumber,
                     showBarLines = settings.showBarLines,
                     showBpmChanges = settings.showBpmChanges,
                     showMeasureNumbers = settings.showMeasureNumbers,
@@ -4058,7 +4130,15 @@ private fun ChartPlayer(
                     configExpanded = it
                     if (it) playing = false
                 },
-                onSettingsChange = { next -> onSettingsChange(next.copy(speed = next.safeSpeed)) },
+                onSettingsChange = { next ->
+                    onSettingsChange(
+                        next.copy(
+                            speed = next.safeSpeed,
+                            speedMode = next.safeSpeedMode,
+                            greenNumber = next.safeGreenNumber,
+                        ),
+                    )
+                },
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f),
             )
         }
@@ -4071,6 +4151,8 @@ private fun ChartCanvas(
     data: TextageChartData,
     currentBeat: Float,
     speed: Int,
+    speedMode: String,
+    greenNumber: Int,
     showBarLines: Boolean,
     showBpmChanges: Boolean,
     showMeasureNumbers: Boolean,
@@ -4085,18 +4167,29 @@ private fun ChartCanvas(
     modifier: Modifier,
 ) {
     val laneCount = if (data.chart.mode == "DP") 16 else 8
-    // Keep note geometry in musical beat coordinates. BPM changes are applied
-    // by playback timing, which changes the visible scroll speed without
-    // stretching the chart a second time and creating gaps between measures.
-    // Hi-Speed 1 is four times the old visual baseline.
-    val pixelsPerBeat = 16f * speed * 4f
+    var canvasHeightPx by remember { mutableStateOf(0f) }
+    val fallbackHeightPx = with(LocalDensity.current) { 360.dp.toPx() }
+    val judgeDistancePx = (canvasHeightPx.takeIf { it > 0f } ?: fallbackHeightPx) * .92f
+    // Keep note geometry in musical beat coordinates. Hi-Speed uses the
+    // existing BPM-dependent beat spacing. Floating Hi-Speed derives the
+    // spacing from the starting BPM so the selected green number represents
+    // greenNumber / 600 seconds from the top of the lane to the judge line.
+    val pixelsPerBeat = playerPixelsPerBeat(
+        speedMode = speedMode,
+        speed = speed,
+        greenNumber = greenNumber,
+        initialBpm = data.bpmAt(0f),
+        judgeDistancePx = judgeDistancePx,
+    )
     val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
     val labelPadding = with(LocalDensity.current) { 4.dp.toPx() }
     val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
     val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
     Canvas(
-        modifier.pointerInput(data.chart.id, speed) {
+        modifier
+            .onSizeChanged { canvasHeightPx = it.height.toFloat() }
+            .pointerInput(data.chart.id, speed, speedMode, greenNumber) {
             detectVerticalDragGestures { _, dragAmount ->
                 if (!latestPlaying) {
                     latestOnCurrentBeatChange(latestCurrentBeat + dragAmount / pixelsPerBeat)
