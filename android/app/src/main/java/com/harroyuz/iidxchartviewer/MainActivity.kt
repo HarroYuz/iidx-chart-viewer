@@ -95,6 +95,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -1016,7 +1017,23 @@ private fun IidxApp(
                     showingDetail = selectedSong != null || selectedChart != null,
                     onBack = onBack,
                     onRequestExit = onRequestExit,
-                    modifier = Modifier.alpha(if (selectedSong == null && selectedChart == null) 1f else 0f),
+                    modifier = Modifier
+                        .alpha(if (selectedSong == null && selectedChart == null) 1f else 0f)
+                        .then(
+                            if (selectedSong != null || selectedChart != null) {
+                                Modifier.pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { change ->
+                                                change.consume()
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
                 if (selectedChart != null) {
                     val selectedSongKey = songGroupKey(selectedChart)
