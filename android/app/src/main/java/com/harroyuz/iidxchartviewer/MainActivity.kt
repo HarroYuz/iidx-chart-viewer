@@ -1308,6 +1308,7 @@ private fun ChartBrowserScreen(
                 calendarMonth = bjmHistoryCalendarMonth,
                 onCalendarMonthChange = { bjmHistoryCalendarMonth = it },
                 listState = bjmHistoryListState,
+                modifier = modifier,
             )
         } else if (settingsPageVisible) {
             UpdateSettingsScreen(
@@ -1572,7 +1573,9 @@ private fun BjmDataScreen(
     calendarMonth: String,
     onCalendarMonthChange: (String) -> Unit,
     listState: LazyListState,
+    modifier: Modifier = Modifier,
 ) {
+    var logoutConfirmationVisible by remember { mutableStateOf(false) }
     val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
     val historyCharts = remember(state.songGroups, state.charts, bjmIndex.songMusicIds) {
         buildBjmHistoryChartIndex(state, bjmIndex, chartsById)
@@ -1603,7 +1606,7 @@ private fun BjmDataScreen(
         listState.scrollToItem(0)
     }
 
-    Column(Modifier.fillMaxSize().background(Background)) {
+    Column(modifier.fillMaxSize().background(Background)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1643,7 +1646,7 @@ private fun BjmDataScreen(
                         modifier = Modifier.weight(1f),
                     )
                     TextButton(
-                        onClick = onLogout,
+                        onClick = { logoutConfirmationVisible = true },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     ) {
                         Text("登出", color = Purple, fontSize = 12.sp)
@@ -1717,6 +1720,24 @@ private fun BjmDataScreen(
             }
         }
     }
+    if (logoutConfirmationVisible) {
+        AlertDialog(
+            onDismissRequest = { logoutConfirmationVisible = false },
+            title = { Text("退出 BJM") },
+            text = { Text("确定要退出当前 BJM 账号吗？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        logoutConfirmationVisible = false
+                        onLogout()
+                    },
+                ) { Text("退出", color = Purple) }
+            },
+            dismissButton = {
+                TextButton(onClick = { logoutConfirmationVisible = false }) { Text("取消") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1730,7 +1751,7 @@ private fun BjmHistoryRow(
         ?: music?.title?.takeIf { it.isNotBlank() }
         ?: "未知曲目"
     val subtitle = chart?.subtitle?.takeIf { it.isNotBlank() }
-    val difficulty = chart?.let { "${difficultyName(it.difficulty)} ${it.level}" }
+    val difficulty = chart?.let { "${it.mode} ${difficultyName(it.difficulty)} ${it.level}" }
         ?: "${if (record.playStyle == 1) "DP" else "SP"} ${difficultyName(difficultyCode(record.noteId))}"
     val rowHeight = if (subtitle != null) 72.dp else 62.dp
     Column(
@@ -2107,36 +2128,40 @@ private fun HistoryCalendar(
                 onClick = { onMonthChange(shiftHistoryMonth(month, -1)) },
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
             ) { Text("‹", color = Purple, fontSize = 20.sp) }
-            Row(
+            Box(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(
-                    onClick = {
-                        pickerYear = displayYear
-                        pickerMode = if (pickerMode == HistoryPickerMode.YEAR) null else HistoryPickerMode.YEAR
-                    },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 0.dp),
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("${displayYear}年", color = if (pickerMode == HistoryPickerMode.YEAR) Purple else Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    TextButton(
+                        onClick = {
+                            pickerYear = displayYear
+                            pickerMode = if (pickerMode == HistoryPickerMode.YEAR) null else HistoryPickerMode.YEAR
+                        },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 0.dp),
+                    ) {
+                        Text("${displayYear}年", color = if (pickerMode == HistoryPickerMode.YEAR) Purple else Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text("/", color = Muted, fontSize = 12.sp)
+                    TextButton(
+                        onClick = {
+                            pickerYear = displayYear
+                            pickerMode = if (pickerMode == HistoryPickerMode.MONTH) null else HistoryPickerMode.MONTH
+                        },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 0.dp),
+                    ) {
+                        Text("${displayMonth}月", color = if (pickerMode == HistoryPickerMode.MONTH) Purple else Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
-                Text("/", color = Muted, fontSize = 12.sp)
-                TextButton(
-                    onClick = {
-                        pickerYear = displayYear
-                        pickerMode = if (pickerMode == HistoryPickerMode.MONTH) null else HistoryPickerMode.MONTH
-                    },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 0.dp),
-                ) {
-                    Text("${displayMonth}月", color = if (pickerMode == HistoryPickerMode.MONTH) Purple else Ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                if (selectedDate != null) {
+                    TextButton(
+                        onClick = { onDateSelected(null) },
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                    ) { Text("清除", color = Muted, fontSize = 10.sp) }
                 }
-            }
-            if (selectedDate != null) {
-                TextButton(
-                    onClick = { onDateSelected(null) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                ) { Text("清除", color = Muted, fontSize = 10.sp) }
             }
             TextButton(
                 onClick = { onMonthChange(shiftHistoryMonth(month, 1)) },
