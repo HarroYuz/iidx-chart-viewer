@@ -50,6 +50,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1178,6 +1179,9 @@ private fun ChartBrowserScreen(
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
+    var searchGenreEnabled by rememberSaveable { mutableStateOf(true) }
+    var searchTitleEnabled by rememberSaveable { mutableStateOf(true) }
+    var searchComposerEnabled by rememberSaveable { mutableStateOf(true) }
     var bjmHistoryQuery by rememberSaveable { mutableStateOf("") }
     var bjmHistoryDate by rememberSaveable { mutableStateOf<String?>(null) }
     var bjmHistoryCalendarExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1395,17 +1399,33 @@ private fun ChartBrowserScreen(
                 }
             }
         }
-        val songs = remember(allSongs, query, selectedVersion, selectedLevel) {
+        val songs = remember(
+            allSongs,
+            query,
+            selectedVersion,
+            selectedLevel,
+            searchGenreEnabled,
+            searchTitleEnabled,
+            searchComposerEnabled,
+        ) {
             allSongs.mapNotNull { song ->
                 val matchingCharts = song.charts.filter {
                     (selectedVersion == null || it.version == selectedVersion) &&
                         (selectedLevel == null || it.level == selectedLevel)
                 }
+                val searchText = buildList {
+                    if (searchGenreEnabled) add(song.genre)
+                    if (searchTitleEnabled) {
+                        add(song.title)
+                        add(song.subtitle)
+                    }
+                    if (searchComposerEnabled) add(song.composer)
+                }.joinToString(" ")
                 if (matchingCharts.isEmpty()) {
                     null
                 } else if (
                     query.isNotBlank() &&
-                    !"${song.title} ${song.subtitle} ${song.genre} ${song.composer}".contains(query, ignoreCase = true)
+                    !searchText.contains(query, ignoreCase = true)
                 ) {
                     null
                 } else {
@@ -1422,6 +1442,21 @@ private fun ChartBrowserScreen(
                     )
                 }
             }
+        }
+        val selectedSearchDimensionCount = listOf(
+            searchGenreEnabled,
+            searchTitleEnabled,
+            searchComposerEnabled,
+        ).count { it }
+        val searchDimensions = buildList {
+            if (searchGenreEnabled) add("曲风")
+            if (searchTitleEnabled) add("曲名")
+            if (searchComposerEnabled) add("曲师")
+        }
+        val searchPlaceholder = when (searchDimensions.size) {
+            1 -> "搜索${searchDimensions.first()}"
+            2 -> "搜索${searchDimensions.joinToString("或")}"
+            else -> "搜索${searchDimensions[0]}、${searchDimensions[1]}或${searchDimensions[2]}"
         }
         Column(modifier.fillMaxSize()) {
             Row(
@@ -1483,7 +1518,7 @@ private fun ChartBrowserScreen(
                     value = query,
                     onValueChange = { query = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("搜索曲名或艺术家", color = Muted) },
+                    placeholder = { Text(searchPlaceholder, color = Muted) },
                     singleLine = true,
                     trailingIcon = {
                         if (query.isNotEmpty()) {
@@ -1494,7 +1529,14 @@ private fun ChartBrowserScreen(
                     },
                 )
                 IconButton(onClick = { filterExpanded = !filterExpanded }) {
-                    FunnelIcon(if (filterExpanded || selectedVersion != null || selectedLevel != null) Purple else Muted)
+                    FunnelIcon(
+                        if (
+                            filterExpanded ||
+                            selectedVersion != null ||
+                            selectedLevel != null ||
+                            selectedSearchDimensionCount < 3
+                        ) Purple else Muted,
+                    )
                 }
             }
             if (filterExpanded) {
@@ -1519,10 +1561,48 @@ private fun ChartBrowserScreen(
                         onClick = {
                             selectedVersion = null
                             selectedLevel = null
+                            searchGenreEnabled = true
+                            searchTitleEnabled = true
+                            searchComposerEnabled = true
                         },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                    ) { Text("清除", color = Muted, fontSize = 11.sp) }
+                    ) { Text("重置", color = Muted, fontSize = 11.sp) }
                 }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SearchDimensionCheckbox(
+                        label = "曲风",
+                        checked = searchGenreEnabled,
+                        enabled = !searchGenreEnabled || selectedSearchDimensionCount > 1,
+                        onCheckedChange = { searchGenreEnabled = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SearchDimensionCheckbox(
+                        label = "曲名",
+                        checked = searchTitleEnabled,
+                        enabled = !searchTitleEnabled || selectedSearchDimensionCount > 1,
+                        onCheckedChange = { searchTitleEnabled = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SearchDimensionCheckbox(
+                        label = "曲师",
+                        checked = searchComposerEnabled,
+                        enabled = !searchComposerEnabled || selectedSearchDimensionCount > 1,
+                        onCheckedChange = { searchComposerEnabled = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            if (selectedSearchDimensionCount < 3) {
+                Text(
+                    "仅筛选${searchDimensions.joinToString("/")}",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 1.dp),
+                )
             }
             val activeFilterSummary = buildString {
                 selectedVersion?.let { append(it) }
@@ -3368,6 +3448,32 @@ private fun ChartScoreSummary(
 }
 
 @Composable
+private fun SearchDimensionCheckbox(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.size(28.dp),
+        )
+        Text(
+            label,
+            color = if (enabled || checked) Ink else Muted,
+            fontSize = 11.sp,
+        )
+    }
+}
+
+@Composable
 private fun ChartLoadError(onRetry: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("谱面数据获取失败", color = Orange, fontSize = 15.sp, fontWeight = FontWeight.Bold)
@@ -3405,7 +3511,7 @@ private fun PlayerConfigBox(
             append(", ${settings.side}")
             settings.safePlayOption.optionAbbreviation()
                 .takeIf { settings.safePlayOption != "NONE" }
-                ?.let { append(" $it") }
+                ?.let { append(", $it") }
         } else {
             val options = listOf(settings.safePlayOption1P, settings.safePlayOption2P)
                 .map { it.optionAbbreviation() }
