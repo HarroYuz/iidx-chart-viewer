@@ -178,9 +178,10 @@ internal object TextageJsEngine {
      */
     private fun collectNotesScript(): String = """
         var __textageEvents = [];
+        var __textageRawEvents = [];
         var __textageOriginalStatInsert = stat_insert;
         stat_insert = function(side, lane, position, length) {
-            __textageEvents.push([side, lane, position, length || 0]);
+            __textageRawEvents.push([side, lane, position, length || 0]);
             return __textageOriginalStatInsert(side, lane, position, length);
         };
         stat_arr = [[[],[],[],[],[],[],[],[]],[[],[],[],[],[],[],[]],[[]]];
@@ -188,6 +189,21 @@ internal object TextageJsEngine {
         stat_on = 1;
         b(0, measure);
         stat_on = 0;
+        // stat_insert merges adjacent pieces of one long note in stat_arr.
+        // Read that merged structure instead of recording each raw callback;
+        // otherwise a hold crossing a measure boundary is split visually.
+        for (var __side = 0; __side < 2; __side++) {
+            for (var __lane = 0; __lane < 8; __lane++) {
+                var __laneEvents = stat_arr[__side][__lane] || [];
+                for (var __index = 0; __index < __laneEvents.length; __index++) {
+                    var __entry = __laneEvents[__index];
+                    __textageEvents.push([__side, __lane, __entry[0], __entry[1] || 0]);
+                }
+            }
+        }
+        // Keep a compatibility fallback for test doubles or older Textage
+        // scripts whose stat_insert does not populate stat_arr.
+        if (__textageEvents.length == 0) __textageEvents = __textageRawEvents;
     """.trimIndent()
 
     private fun jsString(value: String): String = "'" + value

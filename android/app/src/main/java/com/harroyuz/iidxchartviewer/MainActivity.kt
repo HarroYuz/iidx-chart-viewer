@@ -41,8 +41,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
@@ -121,6 +123,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.Normalizer
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -155,7 +158,6 @@ private const val UPDATE_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
 private enum class DataSyncTarget {
     FULL,
     TEXTAGE,
-    BJM_ALL,
     BJM_MUSIC,
     BJM_SCORES,
 }
@@ -175,6 +177,7 @@ class MainActivity : ComponentActivity() {
     private var localDataStage by mutableStateOf("正在准备本地数据")
     private var syncTarget by mutableStateOf<DataSyncTarget?>(null)
     private var syncStage by mutableStateOf<String?>(null)
+    private var syncProgress by mutableStateOf<Float?>(null)
     private var textageSyncing by mutableStateOf(false)
     private var textageProgress by mutableStateOf<TextageSyncProgress?>(null)
     private var textageError by mutableStateOf<String?>(null)
@@ -204,7 +207,7 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK) {
             loginPending = false
             message = "BJM 登录完成，正在同步成绩…"
-            syncBjm()
+            syncBjmScoresAfterLogin()
         } else {
             loginPending = false
         }
@@ -261,12 +264,13 @@ class MainActivity : ComponentActivity() {
                     updateInstalling = updateInstalling,
                     syncTarget = syncTarget,
                     syncStage = syncStage,
+                    syncProgress = syncProgress,
                     onDismissMessage = { message = null },
                     onLogin = ::openBjmLogin,
                     onLogoutBjm = ::logoutBjm,
                     onOpenBjmData = { bjmDataPageVisible = true },
                     onRefreshTextage = ::refreshTextage,
-                    onFullDataSync = ::syncAllData,
+                    onFullDataSync = { syncAllData() },
                     onSyncTextage = ::syncTextageOnly,
                     onSyncBjmMusic = ::syncBjmMusicOnly,
                     onSyncBjmScores = ::syncBjmScoresOnly,
@@ -399,8 +403,9 @@ class MainActivity : ComponentActivity() {
                     // button performs the next metadata refresh on demand.
                     val needsBootstrap = loaded.charts.isEmpty() || !store.isTextageSyncComplete()
                     val dailySyncDue = System.currentTimeMillis() - store.fullSyncLastAt() >= TEXTAGE_SYNC_INTERVAL_MS
-                    if (needsBootstrap || dailySyncDue) {
-                        syncAllData()
+                    when {
+                        needsBootstrap -> syncAllData()
+                        dailySyncDue -> syncAllData(automatic = true)
                     }
                     checkForUpdatesIfDue()
                 }
@@ -514,6 +519,7 @@ class MainActivity : ComponentActivity() {
         if (syncTarget != null) return
         syncTarget = target
         syncStage = null
+        syncProgress = if (target == DataSyncTarget.FULL) 0f else null
         lifecycleScope.launch {
             try {
                 action()
@@ -522,14 +528,13 @@ class MainActivity : ComponentActivity() {
             } finally {
                 syncStage = null
                 syncTarget = null
+                syncProgress = null
             }
         }
     }
 
-    private fun syncBjm() {
-        startDataSync(DataSyncTarget.BJM_ALL) {
-            syncStage = "正在同步 BJM 曲目库"
-            syncBjmMusicData()
+    private fun syncBjmScoresAfterLogin() {
+        startDataSync(DataSyncTarget.BJM_SCORES) {
             syncStage = "正在同步用户成绩"
             val count = syncBjmScoresData()
             syncStage = "正在构建索引"
@@ -538,20 +543,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun syncAllData() {
+    private fun syncAllData(automatic: Boolean = false) {
         startDataSync(DataSyncTarget.FULL) {
+            val hasScores = appState.bjmUser != null
+            val otherStepCount = if (hasScores) 3 else 2
+            val otherStepWeight = 0.5f / otherStepCount
             syncStage = "正在同步 Textage 曲目库"
             syncTextageData()
+            syncProgress = 0.5f
             syncStage = "正在同步 BJM 曲目库"
             syncBjmMusicData()
+            syncProgress = 0.5f + otherStepWeight
             if (appState.bjmUser != null) {
                 syncStage = "正在同步用户成绩"
                 syncBjmScoresData()
+                syncProgress = 0.5f + otherStepWeight * 2f
             }
             syncStage = "正在构建索引"
             rebuildFullBjmIndex()
+            syncProgress = 1f
             store.setFullSyncLastAt()
-            message = "全量数据同步完成"
+            if (!automatic) message = "全量数据同步完成"
         }
     }
 
@@ -608,7 +620,13 @@ class MainActivity : ComponentActivity() {
                     lastProgressPublishedAt = now
                     lastProgressCompleted = completed
                     withContext(Dispatchers.Main.immediate) {
-                        textageProgress = TextageSyncProgress(initial, completed, total, title)
+                        val progress = TextageSyncProgress(initial, completed, total, title)
+                        textageProgress = progress
+                        if (syncTarget == DataSyncTarget.FULL) {
+                            syncProgress = progress.fraction * 0.5f
+                        } else if (syncTarget == DataSyncTarget.TEXTAGE) {
+                            syncProgress = progress.fraction
+                        }
                     }
                 }
             }
@@ -903,6 +921,7 @@ private fun IidxApp(
     updateInstalling: Boolean,
     syncTarget: DataSyncTarget?,
     syncStage: String?,
+    syncProgress: Float?,
     settingsPageVisible: Boolean,
     onLogin: () -> Unit,
     onLogoutBjm: () -> Unit,
@@ -981,6 +1000,7 @@ private fun IidxApp(
                     updateChecking = updateChecking,
                     syncTarget = syncTarget,
                     syncStage = syncStage,
+                    syncProgress = syncProgress,
                     settingsPageVisible = settingsPageVisible,
                     onOpenSettings = onOpenSettings,
                     onDismissSettings = onDismissSettings,
@@ -1119,6 +1139,7 @@ private fun ChartBrowserScreen(
     updateChecking: Boolean,
     syncTarget: DataSyncTarget?,
     syncStage: String?,
+    syncProgress: Float?,
     settingsPageVisible: Boolean,
     onOpenSettings: () -> Unit,
     onDismissSettings: () -> Unit,
@@ -1141,6 +1162,11 @@ private fun ChartBrowserScreen(
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
+    var bjmHistoryQuery by rememberSaveable { mutableStateOf("") }
+    var bjmHistoryDate by rememberSaveable { mutableStateOf<String?>(null) }
+    var bjmHistoryCalendarExpanded by rememberSaveable { mutableStateOf(false) }
+    var bjmHistoryCalendarMonth by rememberSaveable { mutableStateOf(historyMonthKey(System.currentTimeMillis())) }
+    val bjmHistoryListState = rememberLazyListState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     fun closeDrawer() {
@@ -1257,6 +1283,15 @@ private fun ChartBrowserScreen(
                 onLogin = onLogin,
                 onLogout = onLogoutBjm,
                 onOpenSong = onOpenSongFromBjmHistory,
+                query = bjmHistoryQuery,
+                onQueryChange = { bjmHistoryQuery = it },
+                selectedDate = bjmHistoryDate,
+                onSelectedDateChange = { bjmHistoryDate = it },
+                calendarExpanded = bjmHistoryCalendarExpanded,
+                onCalendarExpandedChange = { bjmHistoryCalendarExpanded = it },
+                calendarMonth = bjmHistoryCalendarMonth,
+                onCalendarMonthChange = { bjmHistoryCalendarMonth = it },
+                listState = bjmHistoryListState,
             )
         } else if (settingsPageVisible) {
             UpdateSettingsScreen(
@@ -1270,6 +1305,7 @@ private fun ChartBrowserScreen(
                 bjmScoresLastSyncAt = bjmScoresLastSyncAt,
                 syncTarget = syncTarget,
                 syncStage = syncStage,
+                syncProgress = syncProgress,
                 bjmLoggedIn = state.bjmUser != null,
                 onFullDataSync = onFullDataSync,
                 onSyncTextage = onSyncTextage,
@@ -1511,12 +1547,42 @@ private fun BjmDataScreen(
     onLogin: () -> Unit,
     onLogout: () -> Unit,
     onOpenSong: (IidxChart) -> Unit,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    selectedDate: String?,
+    onSelectedDateChange: (String?) -> Unit,
+    calendarExpanded: Boolean,
+    onCalendarExpandedChange: (Boolean) -> Unit,
+    calendarMonth: String,
+    onCalendarMonthChange: (String) -> Unit,
+    listState: LazyListState,
 ) {
     val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
     val historyCharts = remember(state.songGroups, state.charts, bjmIndex.songMusicIds) {
         buildBjmHistoryChartIndex(state, bjmIndex, chartsById)
     }
     val musicById = remember(state.bjmMusic) { state.bjmMusic.associateBy { it.musicId } }
+    val filteredHistory = remember(history, query, selectedDate, historyCharts, musicById) {
+        val normalizedQuery = query.trim()
+        history.filter { record ->
+            val chart = historyCharts[record.key]
+            val music = musicById[record.musicId]
+            val matchesQuery = normalizedQuery.isBlank() || listOf(
+                chart?.title,
+                chart?.subtitle,
+                chart?.genre,
+                chart?.composer,
+                music?.title,
+                music?.plainTitle,
+                music?.artist,
+            ).filterNotNull().joinToString(" ").contains(normalizedQuery, ignoreCase = true)
+            val matchesDate = selectedDate == null || bjmHistoryRecordDate(record.time) == selectedDate
+            matchesQuery && matchesDate
+        }
+    }
+    LaunchedEffect(query, selectedDate) {
+        listState.scrollToItem(0)
+    }
 
     Column(Modifier.fillMaxSize().background(Background)) {
         Row(
@@ -1564,16 +1630,61 @@ private fun BjmDataScreen(
                         Text("登出", color = Purple, fontSize = 12.sp)
                     }
                 }
-                if (history.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("暂无历史成绩", color = Muted, fontSize = 14.sp)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("搜索曲目", color = Muted) },
+                        singleLine = true,
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { onQueryChange("") }) {
+                                    Text("×", color = Muted, fontSize = 20.sp)
+                                }
+                            }
+                        },
+                    )
+                    IconButton(onClick = { onCalendarExpandedChange(!calendarExpanded) }) {
+                        CalendarIcon(if (calendarExpanded || selectedDate != null) Purple else Muted)
+                    }
+                }
+                if (calendarExpanded) {
+                    HistoryCalendar(
+                        month = calendarMonth,
+                        selectedDate = selectedDate,
+                        onMonthChange = onCalendarMonthChange,
+                        onDateSelected = { date ->
+                            onSelectedDateChange(date)
+                            date?.let { onCalendarMonthChange(it.substring(0, 7)) }
+                        },
+                    )
+                } else if (selectedDate != null) {
+                    Text(
+                        "已筛选：$selectedDate",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 1.dp),
+                    )
+                }
+                if (filteredHistory.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            if (history.isEmpty()) "暂无历史成绩" else "没有匹配的历史记录",
+                            color = Muted,
+                            fontSize = 14.sp,
+                        )
                     }
                 } else {
                     LazyColumn(
                         Modifier.fillMaxWidth().weight(1f),
+                        state = listState,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 18.dp),
                     ) {
-                        items(history, key = ::bjmHistoryRecordKey) { record ->
+                        items(filteredHistory, key = ::bjmHistoryRecordKey) { record ->
                             BjmHistoryRow(
                                 record = record,
                                 chart = historyCharts[record.key],
@@ -1605,7 +1716,7 @@ private fun BjmHistoryRow(
         Modifier.fillMaxWidth()
             .height(62.dp)
             .clickable(enabled = chart != null) { chart?.let(onOpenSong) }
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp, vertical = 4.dp),
     ) {
         Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Column(
@@ -1709,6 +1820,7 @@ private fun UpdateSettingsScreen(
     bjmScoresLastSyncAt: Long,
     syncTarget: DataSyncTarget?,
     syncStage: String?,
+    syncProgress: Float?,
     bjmLoggedIn: Boolean,
     onFullDataSync: () -> Unit,
     onSyncTextage: () -> Unit,
@@ -1766,7 +1878,7 @@ private fun UpdateSettingsScreen(
             }
             HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
             Text(
-                "单独同步数据源",
+                "数据源同步",
                 color = Muted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
@@ -1774,7 +1886,6 @@ private fun UpdateSettingsScreen(
             )
             SettingsActionRow(
                 title = "Textage 曲目库",
-                subtitle = "同步 Textage 曲目元数据",
                 lastUpdatedAt = textageLastSyncAt,
                 actionLabel = if (syncTarget == DataSyncTarget.TEXTAGE) "同步中…" else "同步",
                 enabled = !syncing,
@@ -1782,7 +1893,6 @@ private fun UpdateSettingsScreen(
             )
             SettingsActionRow(
                 title = "BJM 曲目库",
-                subtitle = "同步 BJM 曲目元数据",
                 lastUpdatedAt = bjmMusicLastSyncAt,
                 actionLabel = if (syncTarget == DataSyncTarget.BJM_MUSIC) "同步中…" else "同步",
                 enabled = !syncing,
@@ -1790,7 +1900,6 @@ private fun UpdateSettingsScreen(
             )
             SettingsActionRow(
                 title = "用户成绩库",
-                subtitle = "同步当前 BJM 用户成绩",
                 lastUpdatedAt = bjmScoresLastSyncAt,
                 actionLabel = when {
                     syncTarget == DataSyncTarget.BJM_SCORES -> "同步中…"
@@ -1808,7 +1917,11 @@ private fun UpdateSettingsScreen(
                 enabled = !syncing,
                 onClick = onClearChartCache,
             )
-            if (textageProgress != null) TextageSyncBanner(textageProgress)
+            if (syncTarget == DataSyncTarget.FULL && syncProgress != null) {
+                DataSyncProgressBanner(syncStage, syncProgress)
+            } else if (textageProgress != null) {
+                TextageSyncBanner(textageProgress)
+            }
             if (!textageError.isNullOrBlank()) {
                 Text(
                     textageError,
@@ -1824,7 +1937,7 @@ private fun UpdateSettingsScreen(
 @Composable
 private fun SettingsActionRow(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     lastUpdatedAt: Long? = null,
     actionLabel: String,
     enabled: Boolean,
@@ -1836,8 +1949,10 @@ private fun SettingsActionRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text(subtitle, color = Muted, fontSize = 12.sp)
+            if (!subtitle.isNullOrBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(subtitle, color = Muted, fontSize = 12.sp)
+            }
             if (lastUpdatedAt != null) {
                 Spacer(Modifier.height(2.dp))
                 Text(formatDataSourceLastSync(lastUpdatedAt), color = Muted, fontSize = 11.sp)
@@ -1912,6 +2027,163 @@ private fun FunnelIcon(color: ComposeColor) {
             close()
         }
         drawPath(path, color = color, style = Stroke(width = 2f))
+    }
+}
+
+@Composable
+private fun CalendarIcon(color: ComposeColor) {
+    Canvas(Modifier.size(22.dp)) {
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * .14f, size.height * .20f),
+            size = Size(size.width * .72f, size.height * .66f),
+            cornerRadius = CornerRadius(size.width * .08f),
+            style = Stroke(width = 2f),
+        )
+        drawLine(
+            color,
+            Offset(size.width * .14f, size.height * .40f),
+            Offset(size.width * .86f, size.height * .40f),
+            strokeWidth = 2f,
+        )
+        drawLine(
+            color,
+            Offset(size.width * .32f, size.height * .10f),
+            Offset(size.width * .32f, size.height * .28f),
+            strokeWidth = 2f,
+        )
+        drawLine(
+            color,
+            Offset(size.width * .68f, size.height * .10f),
+            Offset(size.width * .68f, size.height * .28f),
+            strokeWidth = 2f,
+        )
+    }
+}
+
+@Composable
+private fun HistoryCalendar(
+    month: String,
+    selectedDate: String?,
+    onMonthChange: (String) -> Unit,
+    onDateSelected: (String?) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 2.dp)
+            .border(1.dp, ComposeColor(0xFFE5E3EC), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                onClick = { onMonthChange(shiftHistoryMonth(month, -1)) },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+            ) { Text("‹", color = Purple, fontSize = 20.sp) }
+            Text(
+                historyMonthLabel(month),
+                color = Ink,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+            )
+            if (selectedDate != null) {
+                TextButton(
+                    onClick = { onDateSelected(null) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) { Text("清除", color = Muted, fontSize = 10.sp) }
+            }
+            TextButton(
+                onClick = { onMonthChange(shiftHistoryMonth(month, 1)) },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+            ) { Text("›", color = Purple, fontSize = 20.sp) }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            listOf("日", "一", "二", "三", "四", "五", "六").forEach { day ->
+                Text(
+                    day,
+                    color = Muted,
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        historyCalendarDays(month).chunked(7).forEach { week ->
+            Row(Modifier.fillMaxWidth()) {
+                week.forEach { date ->
+                    Box(
+                        Modifier.weight(1f)
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(if (date == selectedDate) Purple.copy(alpha = .16f) else ComposeColor.Transparent)
+                            .clickable(enabled = date != null) { date?.let { onDateSelected(it) } },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        date?.let {
+                            Text(
+                                it.substringAfterLast('-'),
+                                color = if (it == selectedDate) Purple else Ink,
+                                fontSize = 11.sp,
+                                fontWeight = if (it == selectedDate) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun historyTimeMillis(value: Long): Long = when {
+    value < 10_000_000_000L -> value * 1_000L
+    value > 100_000_000_000_000L -> value / 1_000L
+    else -> value
+}
+
+private fun bjmHistoryRecordDate(value: Long): String =
+    if (value <= 0L) "" else SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(historyTimeMillis(value)))
+
+private fun historyMonthKey(value: Long): String =
+    SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date(historyTimeMillis(value)))
+
+private fun historyMonthCalendar(value: String): Calendar = Calendar.getInstance().apply {
+    val parts = value.split('-')
+    set(Calendar.YEAR, parts.getOrNull(0)?.toIntOrNull() ?: get(Calendar.YEAR))
+    set(Calendar.MONTH, (parts.getOrNull(1)?.toIntOrNull() ?: (get(Calendar.MONTH) + 1)) - 1)
+    set(Calendar.DAY_OF_MONTH, 1)
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}
+
+private fun historyMonthLabel(value: String): String {
+    val calendar = historyMonthCalendar(value)
+    return "${calendar.get(Calendar.YEAR)}年${calendar.get(Calendar.MONTH) + 1}月"
+}
+
+private fun shiftHistoryMonth(value: String, offset: Int): String = historyMonthCalendar(value).apply {
+    add(Calendar.MONTH, offset)
+}.let(::historyMonthKeyFromCalendar)
+
+private fun historyMonthKeyFromCalendar(calendar: Calendar): String =
+    "%04d-%02d".format(Locale.ROOT, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH) + 1)
+
+private fun historyCalendarDays(value: String): List<String?> {
+    val calendar = historyMonthCalendar(value)
+    val year = calendar.get(Calendar.YEAR)
+    val month = calendar.get(Calendar.MONTH)
+    val firstDayOffset = calendar.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+    val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val cellCount = ((firstDayOffset + daysInMonth + 6) / 7) * 7
+    return List(cellCount) { index ->
+        val day = index - firstDayOffset + 1
+        if (day !in 1..daysInMonth) {
+            null
+        } else {
+            "%04d-%02d-%02d".format(Locale.ROOT, year, month + 1, day)
+        }
     }
 }
 
@@ -2089,6 +2361,21 @@ private fun TextageSyncBanner(progress: TextageSyncProgress) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 3.dp),
         )
+    }
+}
+
+@Composable
+private fun DataSyncProgressBanner(stage: String?, progress: Float) {
+    val safeProgress = progress.coerceIn(0f, 1f)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stage ?: "正在同步数据", color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text("${(safeProgress * 100).toInt()}%", color = Muted, fontSize = 10.sp)
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(4.dp)).background(ComposeColor(0xFF26283B))) {
+            Box(Modifier.fillMaxWidth(safeProgress).height(4.dp).background(Purple))
+        }
     }
 }
 

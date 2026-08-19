@@ -202,7 +202,9 @@ data class TextageSyncProgress(
     val currentTitle: String,
     val failed: Int = 0,
 ) {
-    val fraction: Float get() = if (total <= 0) 1f else (completed.toFloat() / total).coerceIn(0f, 1f)
+    // A newly started Textage sync reports 0/0 until the catalog tells us
+    // its size. It must render as an empty progress bar, not as complete.
+    val fraction: Float get() = if (total <= 0) 0f else (completed.toFloat() / total).coerceIn(0f, 1f)
 }
 
 data class PlayerSettings(
