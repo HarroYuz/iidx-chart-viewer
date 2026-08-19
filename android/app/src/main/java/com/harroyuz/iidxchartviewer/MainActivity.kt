@@ -194,6 +194,7 @@ class MainActivity : ComponentActivity() {
     private var updateInstalling by mutableStateOf(false)
     private var settingsPageVisible by mutableStateOf(false)
     private var bjmDataPageVisible by mutableStateOf(false)
+    private var returnToBjmHistory by mutableStateOf(false)
     private var loginPending = false
     private var exitToastShown = false
 
@@ -285,6 +286,10 @@ class MainActivity : ComponentActivity() {
                     onDownloadUpdate = ::downloadUpdate,
                     onOpenChart = ::openChart,
                     onOpenSong = ::openSong,
+                    onOpenSongFromBjmHistory = { chart ->
+                        bjmDataPageVisible = false
+                        openSong(chart, fromBjmHistory = true)
+                    },
                     onCopyText = ::copyText,
                     onBack = ::handleBack,
                     onRequestExit = ::requestExit,
@@ -813,7 +818,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openSong(chart: IidxChart) {
+    private fun openSong(chart: IidxChart, fromBjmHistory: Boolean? = null) {
+        fromBjmHistory?.let { returnToBjmHistory = it }
         selectedSong = chart
         selectedChart = null
         selectedChartData = null
@@ -829,6 +835,10 @@ class MainActivity : ComponentActivity() {
     private fun closeSong() {
         closeChart()
         selectedSong = null
+        if (returnToBjmHistory) {
+            returnToBjmHistory = false
+            bjmDataPageVisible = true
+        }
     }
 
     private fun handleBack() {
@@ -914,6 +924,7 @@ private fun IidxApp(
     onDownloadUpdate: (GithubReleaseInfo) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onOpenSong: (IidxChart) -> Unit,
+    onOpenSongFromBjmHistory: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
     onBack: () -> Unit,
     onRequestExit: () -> Unit,
@@ -975,6 +986,7 @@ private fun IidxApp(
                     onDismissSettings = onDismissSettings,
                     bjmDataPageVisible = bjmDataPageVisible,
                     onDismissBjmData = onDismissBjmData,
+                    onOpenSongFromBjmHistory = onOpenSongFromBjmHistory,
                     autoUpdateEnabled = autoUpdateEnabled,
                     onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
                     onClearChartCache = onClearChartCache,
@@ -1112,6 +1124,7 @@ private fun ChartBrowserScreen(
     onDismissSettings: () -> Unit,
     bjmDataPageVisible: Boolean,
     onDismissBjmData: () -> Unit,
+    onOpenSongFromBjmHistory: (IidxChart) -> Unit,
     onLogoutBjm: () -> Unit,
     autoUpdateEnabled: Boolean,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
@@ -1243,10 +1256,7 @@ private fun ChartBrowserScreen(
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },
                 onLogin = onLogin,
                 onLogout = onLogoutBjm,
-                onOpenSong = { chart ->
-                    onDismissBjmData()
-                    onOpenSong(chart)
-                },
+                onOpenSong = onOpenSongFromBjmHistory,
             )
         } else if (settingsPageVisible) {
             UpdateSettingsScreen(
@@ -1588,16 +1598,26 @@ private fun BjmHistoryRow(
     val title = chart?.let { displayTitle(it.title, it.sourceLabel) }
         ?: music?.title?.takeIf { it.isNotBlank() }
         ?: "未知曲目"
+    val subtitle = chart?.subtitle?.takeIf { it.isNotBlank() }
     val difficulty = chart?.let { "${difficultyName(it.difficulty)} ${it.level}" }
         ?: "${if (record.playStyle == 1) "DP" else "SP"} ${difficultyName(difficultyCode(record.noteId))}"
     Column(
         Modifier.fillMaxWidth()
+            .height(62.dp)
             .clickable(enabled = chart != null) { chart?.let(onOpenSong) }
-            .padding(horizontal = 20.dp, vertical = 7.dp),
+            .padding(horizontal = 20.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                Text(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.weight(1f).fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    Text(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    subtitle?.let {
+                        Text(it, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1)
+                    }
+                }
                 Text(
                     difficulty,
                     color = difficultyColor(chart?.difficulty ?: difficultyCode(record.noteId)),
@@ -1624,7 +1644,7 @@ private fun BjmHistoryRow(
                 }
             }
         }
-        HorizontalDivider(color = ComposeColor(0xFFE5E3EC), modifier = Modifier.padding(top = 8.dp))
+        HorizontalDivider(color = ComposeColor(0xFFE5E3EC))
     }
 }
 
