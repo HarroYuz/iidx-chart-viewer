@@ -749,6 +749,7 @@ class MainActivity : ComponentActivity() {
         chartLoading = true
 
         lifecycleScope.launch {
+            var fetchedPage: TextageChartPage? = null
             try {
                 val cached = withContext(Dispatchers.IO) { store.loadChartData(chart) }
                 val usableCached = cached?.takeIf { cachedData ->
@@ -756,11 +757,20 @@ class MainActivity : ComponentActivity() {
                 }
                 val data = usableCached ?: run {
                     if (chart.textageUrl == null) throw TextageException("该谱面没有可用的 Textage 链接")
-                    val fetched = textageClient.fetchChart(chart)
+                    fetchedPage = textageClient.fetchChartPage(chart)
+                    val fetched = textageClient.parseChart(fetchedPage!!, chart)
                     withContext(Dispatchers.IO) { store.saveChartData(fetched) }
                     fetched
                 }
                 if (selectedChart?.id == chart.id) selectedChartData = data
+                val siblings = chartFamily(chart)
+                    .filter { it.id != chart.id && it.textageUrl != null }
+                if (siblings.isNotEmpty()) {
+                    val page = fetchedPage
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        warmChartFamily(chart, siblings, page)
+                    }
+                }
             } catch (error: Exception) {
                 if (selectedChart?.id == chart.id) {
                     selectedChartData = null
@@ -768,6 +778,37 @@ class MainActivity : ComponentActivity() {
                 }
             } finally {
                 if (selectedChart?.id == chart.id) chartLoading = false
+            }
+        }
+    }
+
+    private fun chartFamily(chart: IidxChart): List<IidxChart> {
+        val group = appState.songGroups.firstOrNull { it.key == songGroupKey(chart) }
+        val chartIds = group?.chartIds?.toSet()
+        return appState.charts.filter { candidate ->
+            candidate.id in (chartIds ?: emptySet())
+        }
+    }
+
+    private suspend fun warmChartFamily(
+        selectedChart: IidxChart,
+        siblings: List<IidxChart>,
+        initialPage: TextageChartPage?,
+    ) {
+        val page = initialPage ?: runCatching {
+            textageClient.fetchChartPage(selectedChart)
+        }.getOrNull() ?: return
+        siblings.forEach { sibling ->
+            val cached = runCatching { store.loadChartData(sibling) }.getOrNull()
+            val usableCached = cached?.takeIf { cachedData ->
+                cachedData.parsed && (sibling.notes <= 0 || cachedData.chart.notes == sibling.notes)
+            }
+            if (usableCached == null) {
+                runCatching {
+                    textageClient.parseChart(page, sibling)
+                }.onSuccess { parsed ->
+                    runCatching { store.saveChartData(parsed) }
+                }
             }
         }
     }
@@ -1202,6 +1243,10 @@ private fun ChartBrowserScreen(
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },
                 onLogin = onLogin,
                 onLogout = onLogoutBjm,
+                onOpenSong = { chart ->
+                    onDismissBjmData()
+                    onOpenSong(chart)
+                },
             )
         } else if (settingsPageVisible) {
             UpdateSettingsScreen(
@@ -1455,6 +1500,7 @@ private fun BjmDataScreen(
     onOpenMenu: () -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
+    onOpenSong: (IidxChart) -> Unit,
 ) {
     val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
     val historyCharts = remember(state.songGroups, state.charts, bjmIndex.songMusicIds) {
@@ -1522,6 +1568,7 @@ private fun BjmDataScreen(
                                 record = record,
                                 chart = historyCharts[record.key],
                                 music = musicById[record.musicId],
+                                onOpenSong = onOpenSong,
                             )
                         }
                     }
@@ -1536,34 +1583,45 @@ private fun BjmHistoryRow(
     record: BjmScore,
     chart: IidxChart?,
     music: BjmMusic?,
+    onOpenSong: (IidxChart) -> Unit,
 ) {
     val title = chart?.let { displayTitle(it.title, it.sourceLabel) }
         ?: music?.title?.takeIf { it.isNotBlank() }
         ?: "未知曲目"
     val difficulty = chart?.let { "${difficultyName(it.difficulty)} ${it.level}" }
         ?: "${if (record.playStyle == 1) "DP" else "SP"} ${difficultyName(difficultyCode(record.noteId))}"
-    val rank = chart?.let { scoreRankName(record.exScore, it.notes) }
-        ?: "—"
-
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth()
+            .clickable(enabled = chart != null) { chart?.let(onOpenSong) }
+            .padding(horizontal = 20.dp, vertical = 7.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(title, color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Spacer(Modifier.height(2.dp))
-                Text(difficulty, color = difficultyColor(chart?.difficulty ?: difficultyCode(record.noteId)), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Text(formatBjmHistoryTime(record.time), color = Muted, fontSize = 10.sp)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                StrokedText(
-                    text = clearFlagDetailName(record.clearFlag),
-                    fillColor = clearFlagColor(record.clearFlag),
-                    fontSize = 12.sp,
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                Text(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(
+                    difficulty,
+                    color = difficultyColor(chart?.difficulty ?: difficultyCode(record.noteId)),
+                    fontSize = 11.sp,
+                    lineHeight = 12.sp,
                     fontWeight = FontWeight.Bold,
                 )
-                Text("$rank ${record.exScore}", color = NormalBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text("${record.missCount} BP", color = Muted, fontSize = 10.sp)
+                Text(formatBjmHistoryTime(record.time), color = Muted, fontSize = 10.sp, lineHeight = 11.sp)
+            }
+            if (chart != null) {
+                ChartScoreSummary(
+                    score = record,
+                    noteCount = chart.notes,
+                )
+            } else {
+                Column(horizontalAlignment = Alignment.End) {
+                    StrokedText(
+                        text = clearFlagDetailName(record.clearFlag),
+                        fillColor = clearFlagColor(record.clearFlag),
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(record.exScore.toString(), color = NormalBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
         HorizontalDivider(color = ComposeColor(0xFFE5E3EC), modifier = Modifier.padding(top = 8.dp))
@@ -2438,12 +2496,27 @@ private fun buildBjmMusicIndex(music: List<BjmMusic>): Map<String, List<BjmMusic
         .groupBy({ it.first }, { it.second })
 
 private fun findBjmMusic(chart: IidxChart, index: Map<String, List<BjmMusic>>): BjmMusic? {
-    val titleKey = normalizeMusicTitle(chart.title)
-    val candidates = index[titleKey].orEmpty()
+    val titleKeys = buildList {
+        if (chart.subtitle.isNotBlank()) add(normalizeMusicTitle("${chart.title} ${chart.subtitle}"))
+        add(normalizeMusicTitle(chart.title))
+    }.filter(String::isNotBlank).distinct()
+    val candidates = titleKeys
+        .flatMap { index[it].orEmpty() }
+        .distinctBy { it.musicId }
     if (candidates.isEmpty()) return null
     val chartVersion = chart.textageUrl?.let(::textageVersionIndex)
     return candidates.maxWithOrNull(
         compareBy<BjmMusic>(
+            { candidate ->
+                val candidateKeys = setOf(
+                    normalizeMusicTitle(candidate.title),
+                    normalizeMusicTitle(candidate.plainTitle),
+                )
+                titleKeys.indexOfFirst(candidateKeys::contains)
+                    .takeIf { it >= 0 }
+                    ?.let { titleKeys.size - it }
+                    ?: 0
+            },
             { it.level(chart.mode, chart.difficulty) == chart.level },
             { chartVersion != null && it.version == chartVersion },
             { it.version },

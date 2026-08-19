@@ -28,14 +28,32 @@ class TextageClient {
     }
 
     suspend fun fetchChart(chart: IidxChart): TextageChartData = withContext(Dispatchers.IO) {
-        val pageUrl = chart.textageUrl?.let { chartPageUrl(it, chart) }
+        parseChart(fetchChartPage(chart), chart)
+    }
+
+    /**
+     * A Textage chart page is shared by every difficulty of a song. The query
+     * string selects the active branch in JavaScript; the HTML and its data
+     * scripts can therefore be reused for all sibling charts.
+     */
+    internal suspend fun fetchChartPage(chart: IidxChart): TextageChartPage = withContext(Dispatchers.IO) {
+        val baseUrl = chart.textageUrl?.substringBefore('?')
             ?: throw TextageException("该谱面没有可用的 Textage 链接")
+        val pageUrl = chartPageUrl(baseUrl, chart)
         val page = getHtmlWithRetry(pageUrl)
         val scripts = TextageParser.scriptUrls(page, pageUrl).mapNotNull { scriptUrl ->
             runCatching { getHtmlWithRetry(scriptUrl) }.getOrNull()
         }
-        TextageParser.parseChart(chart, page, scripts, pageUrl)
+        TextageChartPage(baseUrl, page, scripts)
     }
+
+    internal fun parseChart(page: TextageChartPage, chart: IidxChart): TextageChartData =
+        TextageParser.parseChart(
+            chart = chart,
+            source = page.html,
+            externalScripts = page.externalScripts,
+            pageUrl = buildTextageChartUrl(page.baseUrl, chart),
+        )
 
     private fun getHtmlWithRetry(url: String, attempts: Int = 3): String {
         var lastError: Exception? = null
@@ -84,6 +102,12 @@ class TextageClient {
         return bytes.toString(charset)
     }
 }
+
+internal data class TextageChartPage(
+    val baseUrl: String,
+    val html: String,
+    val externalScripts: List<String>,
+)
 
 class TextageException(message: String) : Exception(message)
 
