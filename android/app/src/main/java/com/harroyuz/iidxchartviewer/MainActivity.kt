@@ -3570,6 +3570,7 @@ private fun PlayerConfigBox(
                 .map { it.optionAbbreviation() }
             if (options.any { it != "NON" }) append(", ${options.joinToString("/")}")
         }
+        if (settings.keepSpeedAcrossBpm) append(", Fixed-Speed")
     }
     var speedInput by remember(settings.safeSpeed, settings.safeSpeedMode, settings.safeGreenNumber) {
         mutableStateOf(activeSpeedValue.toString())
@@ -3842,7 +3843,7 @@ private fun PlayerChoice(
 @Composable
 private fun PlayerSwitchSetting(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = Muted, fontSize = 9.sp, maxLines = 1)
+        Text(label, color = Muted, fontSize = 11.sp, maxLines = 1)
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
