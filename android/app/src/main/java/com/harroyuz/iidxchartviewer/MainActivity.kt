@@ -292,7 +292,6 @@ class MainActivity : ComponentActivity() {
                     onOpenChart = ::openChart,
                     onOpenSong = ::openSong,
                     onOpenSongFromBjmHistory = { chart ->
-                        bjmDataPageVisible = false
                         openSong(chart, fromBjmHistory = true)
                     },
                     onCopyText = ::copyText,
@@ -2303,7 +2302,7 @@ private fun historyCalendarYears(recordCounts: Map<String, Int>, currentYear: In
     val years = recordCounts.keys.mapNotNull { it.substringBefore('-').toIntOrNull() } + currentYear
     val minYear = years.minOrNull() ?: currentYear
     val maxYear = years.maxOrNull() ?: currentYear
-    return (minYear..maxYear).toList().sortedDescending()
+    return (minYear..maxYear).toList()
 }
 
 private fun historyRecordCountForYear(recordCounts: Map<String, Int>, year: Int): Int {
