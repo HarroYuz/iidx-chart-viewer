@@ -1,19 +1,28 @@
 package com.harroyuz.iidxchartviewer
 
-import android.webkit.CookieManager
+import android.content.Context
+import android.webkit.WebSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
-class BjmClient {
+class BjmClient(context: Context) {
     private val origin = "https://u.bjmania.com"
     private val musicDatabaseOrigin = "https://assets.bjmania.com"
-    private val cookieManager = CookieManager.getInstance()
+    private val sessionManager = BjmSessionManager.getInstance(context)
+
+    init {
+        sessionManager.setUserAgent(
+            WebSettings.getDefaultUserAgent(context) + " IIDXChartViewer/0.1",
+        )
+    }
 
     suspend fun fetchScores(): BjmSyncResult = withContext(Dispatchers.IO) {
         val user = authMe() ?: throw BjmException("BJM 登录态不可用，请先登录 BJMANIA")
@@ -24,10 +33,7 @@ class BjmClient {
 
     fun probeAuthMe(): BjmUser? = authMe()
 
-    fun clearSession() {
-        cookieManager.removeAllCookies(null)
-        cookieManager.flush()
-    }
+    fun clearSession() = sessionManager.clearAllSession()
 
     suspend fun fetchMusicDatabase(): List<BjmMusic> = withContext(Dispatchers.IO) {
         val version = runCatching {
@@ -72,36 +78,24 @@ class BjmClient {
     }
 
     private fun request(path: String, method: String, body: ByteArray?, contentType: String): HttpResponse {
-        val connection = (URL(origin + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            useCaches = false
-            doInput = true
-            setRequestProperty("Accept", if (contentType == "application/json") "application/json" else "*/*")
-            setRequestProperty("Content-Type", contentType)
-            val cookieHeader = cookieManager.getCookie(origin).orEmpty()
-            setRequestProperty("Cookie", cookieHeader)
-            setRequestProperty("Referer", "$origin/")
-            if (contentType == "application/grpc-web+proto") {
-                setRequestProperty("X-Grpc-Web", "1")
-                setRequestProperty("X-User-Agent", "grpc-web-javascript/0.1")
-                setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                extractCookie(cookieHeader, "XSRF-TOKEN")?.let { setRequestProperty("X-XSRF-TOKEN", it) }
+        sessionManager.syncFromWebViewCookieManager()
+        val request = Request.Builder()
+            .url(origin + path)
+            .header("Accept", if (contentType == "application/json") "application/json" else "*/*")
+            .header("Content-Type", contentType)
+            .apply {
+                if (contentType == "application/grpc-web+proto") {
+                    header("X-Grpc-Web", "1")
+                    header("X-User-Agent", "grpc-web-javascript/0.1")
+                }
+                method(
+                    method,
+                    body?.toRequestBody(contentType.toMediaType()),
+                )
             }
-            if (body != null) doOutput = true
-        }
-        return try {
-            body?.let { connection.outputStream.use { output -> output.write(it) } }
-            val stream = if (connection.responseCode in 200..399) connection.inputStream else connection.errorStream
-            val responseCode = connection.responseCode
-            connection.headerFields["Set-Cookie"].orEmpty().forEach { cookie ->
-                cookieManager.setCookie(origin, cookie)
-            }
-            cookieManager.flush()
-            HttpResponse(responseCode, stream?.use { it.readBytes() } ?: ByteArray(0))
-        } finally {
-            connection.disconnect()
+            .build()
+        return sessionManager.client().newCall(request).execute().use { response ->
+            HttpResponse(response.code, response.body?.bytes() ?: ByteArray(0))
         }
     }
 
@@ -124,17 +118,6 @@ class BjmClient {
         }
     }
 
-    private fun extractCookie(header: String, name: String): String? = header
-        .split(';')
-        .asSequence()
-        .map(String::trim)
-        .mapNotNull { item ->
-            val separator = item.indexOf('=')
-            if (separator <= 0 || item.substring(0, separator) != name) null
-            else item.substring(separator + 1)
-        }
-        .firstOrNull()
-        ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }
 }
 
 data class BjmSyncResult(

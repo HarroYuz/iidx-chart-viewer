@@ -16,6 +16,7 @@ class BjmLoginActivity : Activity() {
     private lateinit var webView: WebView
     private val handler = Handler(Looper.getMainLooper())
     private val probeExecutor = Executors.newSingleThreadExecutor()
+    private lateinit var sessionManager: BjmSessionManager
     private var loginCompleted = false
     @Volatile private var probeInFlight = false
     private val authPoll = object : Runnable {
@@ -29,7 +30,7 @@ class BjmLoginActivity : Activity() {
             val currentPoll = this
             probeExecutor.execute {
                 val authenticated = runCatching {
-                    if (!hasWebViewCookies()) null else BjmClient().probeAuthMe()
+                    if (!hasWebViewCookies()) null else BjmClient(this@BjmLoginActivity).probeAuthMe()
                 }.getOrNull() != null
                 runOnUiThread {
                     probeInFlight = false
@@ -51,6 +52,9 @@ class BjmLoginActivity : Activity() {
         super.onCreate(savedInstanceState)
         title = "登录 BJMANIA"
 
+        sessionManager = BjmSessionManager.getInstance(this)
+        sessionManager.setReferer("https://u.bjmania.com/login")
+
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
 
@@ -62,6 +66,7 @@ class BjmLoginActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.userAgentString = settings.userAgentString + " IIDXChartViewer/0.1"
+            sessionManager.setUserAgent(settings.userAgentString)
             cookies.setAcceptThirdPartyCookies(this, true)
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -70,13 +75,44 @@ class BjmLoginActivity : Activity() {
 
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
+                    sessionManager.setReferer(url)
                     handler.removeCallbacks(authPoll)
                     handler.post(authPoll)
                 }
             }
         }
         setContentView(webView)
-        webView.loadUrl("https://u.bjmania.com/login")
+        attemptSessionRestoreOrLoadLogin()
+    }
+
+    private fun attemptSessionRestoreOrLoadLogin() {
+        probeExecutor.execute {
+            if (!hasWebViewCookies()) {
+                runOnUiThread {
+                    if (!loginCompleted) loadLoginPage()
+                }
+                return@execute
+            }
+            val authenticated = runCatching {
+                sessionManager.probeAuthMeWithWebViewCookies().success
+            }.getOrDefault(false)
+            runOnUiThread {
+                if (loginCompleted) return@runOnUiThread
+                if (authenticated) completeLogin() else loadLoginPage()
+            }
+        }
+    }
+
+    private fun loadLoginPage() {
+        // Only discard the in-memory native copy. WebView cookies remain
+        // untouched so the user can recover a session without losing login
+        // state maintained by the browser.
+        sessionManager.clearNativeSession()
+        handler.post {
+            if (loginCompleted || !::webView.isInitialized) return@post
+            sessionManager.setReferer("https://u.bjmania.com/login")
+            webView.loadUrl("https://u.bjmania.com/login")
+        }
     }
 
     private fun hasWebViewCookies(): Boolean {
@@ -98,6 +134,7 @@ class BjmLoginActivity : Activity() {
         loginCompleted = true
         handler.removeCallbacks(authPoll)
         CookieManager.getInstance().flush()
+        BjmSessionManager.getInstance(this).syncFromWebViewCookieManager()
         setResult(RESULT_OK)
         finish()
     }

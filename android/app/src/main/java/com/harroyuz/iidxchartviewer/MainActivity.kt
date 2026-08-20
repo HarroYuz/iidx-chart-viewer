@@ -232,7 +232,7 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = Color.WHITE
         store = IidxLocalStore(this)
         localCatalogPresent = store.hasTextageCatalogMarker()
-        bjmClient = BjmClient()
+        bjmClient = BjmClient(this)
         textageClient = TextageClient()
         githubUpdateClient = GithubUpdateClient()
         autoUpdateEnabled = store.autoUpdateEnabled()
@@ -328,26 +328,12 @@ class MainActivity : ComponentActivity() {
                 }
                 val loadedFromDisk = store.load()
                 val loadedBjmHistory = store.loadBjmHistory()
-                val authenticatedState = if (loadedFromDisk.bjmUser != null) {
-                    val currentUser = runCatching {
-                        bjmClient.probeAuthMe()
-                    }.getOrNull()
-                    if (currentUser == null) {
-                        val loggedOut = loadedFromDisk.copy(bjmUser = null)
-                        withContext(Dispatchers.Main) {
-                            bjmClient.clearSession()
-                        }
-                        withContext(Dispatchers.IO) { store.save(loggedOut) }
-                        withContext(Dispatchers.Main) {
-                            message = "BJM 登录已失效，请重新登录"
-                        }
-                        loggedOut
-                    } else {
-                        loadedFromDisk.copy(bjmUser = currentUser)
-                    }
-                } else {
-                    loadedFromDisk
-                }
+                // Keep the persisted user and local scores available even when
+                // the browser session has expired. A failed auth probe is not
+                // enough to log the user out: it can also be caused by a
+                // temporary network/server failure. BJM sync reports that
+                // state when explicitly requested instead.
+                val authenticatedState = loadedFromDisk
                 withContext(Dispatchers.Main) {
                     appState = authenticatedState
                     bjmHistory = loadedBjmHistory
@@ -741,7 +727,7 @@ class MainActivity : ComponentActivity() {
             bjmClient.fetchScores()
         } catch (error: BjmException) {
             if (error.message?.contains("登录态不可用") == true) {
-                clearBjmSession("BJM 登录已失效，请重新登录")
+                message = "BJM 登录状态暂时不可用，请重新登录；本地成绩仍可查看"
             }
             throw error
         }
