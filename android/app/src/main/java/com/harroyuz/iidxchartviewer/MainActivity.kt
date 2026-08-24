@@ -3557,6 +3557,8 @@ private fun PlayerConfigBox(
     val summary = buildString {
         if (isFloating) append("FHS $activeSpeedValue")
         else append("Hi-Speed ${activeSpeedValue}x")
+        if (!isSp && settings.keepSpeedAcrossBpm) append(", Fixed-Speed")
+        if (!isSp && settings.flip) append(", FLIP")
         if (isSp) {
             append(", ${settings.side}")
             settings.safePlayOption.optionAbbreviation()
@@ -3567,7 +3569,7 @@ private fun PlayerConfigBox(
                 .map { it.optionAbbreviation() }
             if (options.any { it != "NON" }) append(", ${options.joinToString("/")}")
         }
-        if (settings.keepSpeedAcrossBpm) append(", Fixed-Speed")
+        if (isSp && settings.keepSpeedAcrossBpm) append(", Fixed-Speed")
     }
     var speedInput by remember(settings.safeSpeed, settings.safeSpeedMode, settings.safeGreenNumber) {
         mutableStateOf(activeSpeedValue.toString())
@@ -3678,6 +3680,16 @@ private fun PlayerConfigBox(
             ) {
                 PlayerSwitchSetting("流速不随BPM变化", settings.keepSpeedAcrossBpm) {
                     onSettingsChange(settings.copy(keepSpeedAcrossBpm = it))
+                }
+            }
+            if (!isSp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlayerSwitchSetting("FLIP", settings.flip) {
+                        onSettingsChange(settings.copy(flip = it))
+                    }
                 }
             }
             if (isSp) {
@@ -4121,6 +4133,7 @@ private fun ChartPlayer(
                     showBpmChanges = settings.showBpmChanges,
                     showMeasureNumbers = settings.showMeasureNumbers,
                     side = settings.side,
+                    flip = settings.flip,
                     playOption = settings.safePlayOption,
                     playOption1P = settings.safePlayOption1P,
                     playOption2P = settings.safePlayOption2P,
@@ -4168,6 +4181,7 @@ private fun ChartCanvas(
     showBpmChanges: Boolean,
     showMeasureNumbers: Boolean,
     side: String,
+    flip: Boolean,
     playOption: String,
     playOption1P: String,
     playOption2P: String,
@@ -4393,27 +4407,47 @@ private fun ChartCanvas(
             // changes only the position; note color must remain tied to the
             // original chart lane (especially scratch vs. key colors).
             val sourceLane = note.lane
-            val rawLane = if (isSp) sourceLane.mod(8) else sourceLane.coerceIn(0, laneCount - 1)
-            val laneOption = if (isSp) playOption else if (rawLane >= 8) playOption2P else playOption1P
+            val rawLane = if (isSp) {
+                sourceLane.mod(8)
+            } else {
+                sourceLane.coerceIn(0, laneCount - 1)
+            }
+            // In DP, FLIP is applied to the complete two-side chart first.
+            // The side-specific options must then be evaluated on the side
+            // where the chart has landed, matching the arcade behavior.
+            val optionSourceLane = if (!isSp && flip) {
+                when {
+                    rawLane in 0..7 -> rawLane + 8
+                    rawLane in 8..15 -> rawLane - 8
+                    else -> rawLane
+                }
+            } else {
+                rawLane
+            }
+            val laneOption = if (isSp) playOption else if (optionSourceLane >= 8) playOption2P else playOption1P
             fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (laneOption) {
                 "MIRROR" -> 8 - lane
                 "RANDOM" -> (mapping.indexOf(lane).takeIf { it >= 0 } ?: (lane - 1)) + 1
                 else -> lane
             }
-            val logicalLane = if (isSp && rawLane > 0) {
-                mappedKeyLane(rawLane, if (side == "1P") randomMapping1P else randomMapping2P)
+            val logicalLane = if (isSp && optionSourceLane > 0) {
+                mappedKeyLane(optionSourceLane, if (side == "1P") randomMapping1P else randomMapping2P)
             } else rawLane
             val destinationKeyLane = when {
-                isSp && rawLane > 0 -> logicalLane
-                !isSp && rawLane in 1..7 -> mappedKeyLane(rawLane, randomMapping1P)
-                !isSp && rawLane >= 9 -> mappedKeyLane(rawLane - 8, randomMapping2P)
+                isSp && optionSourceLane > 0 -> logicalLane
+                !isSp && optionSourceLane in 1..7 -> mappedKeyLane(optionSourceLane, randomMapping1P)
+                !isSp && optionSourceLane >= 9 -> mappedKeyLane(optionSourceLane - 8, randomMapping2P)
                 else -> 0
             }
             val displayLane = when {
                 isSp && side == "2P" -> if (logicalLane == 0) 7 else logicalLane - 1
-                !isSp && rawLane >= 8 -> dpDisplayLane(rawLane, destinationKeyLane)
-                !isSp && rawLane in 1..7 -> destinationKeyLane
-                else -> logicalLane
+                !isSp && optionSourceLane >= 8 -> dpDisplayLane(optionSourceLane, destinationKeyLane)
+                !isSp && optionSourceLane in 1..7 -> destinationKeyLane
+                else -> if (!isSp && flip) {
+                    if (optionSourceLane == 8) 15 else optionSourceLane
+                } else {
+                    logicalLane
+                }
             }
             val laneIndex = displayLane.coerceIn(0, laneCount - 1)
             // In SP 2P the gray information column is physically before the

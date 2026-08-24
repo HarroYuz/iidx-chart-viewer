@@ -257,6 +257,7 @@ class IidxLocalStore(context: Context) {
         showBpmChanges = preferences.getBoolean(playerKey("show_bpm_changes", suffix), true),
         showMeasureNumbers = preferences.getBoolean(playerKey("show_measure_numbers", suffix), true),
         side = preferences.getString(playerKey("side", suffix), "1P")?.takeIf { it == "1P" || it == "2P" } ?: "1P",
+        flip = preferences.getBoolean(playerKey("flip", suffix), false),
         playOption = option,
         playOption1P = option1P,
         playOption2P = option2P,
@@ -352,6 +353,7 @@ class IidxLocalStore(context: Context) {
         putBoolean(playerKey("show_bpm_changes", suffix), settings.showBpmChanges)
         putBoolean(playerKey("show_measure_numbers", suffix), settings.showMeasureNumbers)
         putString(playerKey("side", suffix), settings.side)
+        putBoolean(playerKey("flip", suffix), settings.flip)
         putString(playerKey("option", suffix), settings.safePlayOption)
         putString(playerKey("option_1p", suffix), settings.safePlayOption1P)
         putString(playerKey("option_2p", suffix), settings.safePlayOption2P)
