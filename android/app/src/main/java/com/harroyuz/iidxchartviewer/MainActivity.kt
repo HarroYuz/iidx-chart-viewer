@@ -284,7 +284,10 @@ class MainActivity : ComponentActivity() {
                     onDismissMessage = { message = null },
                     onLogin = ::openBjmLogin,
                     onLogoutBjm = ::logoutBjm,
-                    onOpenBjmData = { bjmDataPageVisible = true },
+                    onOpenBjmData = {
+                        settingsPageVisible = false
+                        bjmDataPageVisible = true
+                    },
                     onRefreshTextage = ::refreshTextage,
                     onFullDataSync = { syncAllData() },
                     onSyncTextage = ::syncTextageOnly,
@@ -293,7 +296,10 @@ class MainActivity : ComponentActivity() {
                     onOpenGithub = ::openGithub,
                     onCheckForUpdates = { checkForUpdates(manual = true) },
                     settingsPageVisible = settingsPageVisible,
-                    onOpenSettings = { settingsPageVisible = true },
+                    onOpenSettings = {
+                        bjmDataPageVisible = false
+                        settingsPageVisible = true
+                    },
                     onDismissSettings = { settingsPageVisible = false },
                     bjmDataPageVisible = bjmDataPageVisible,
                     onDismissBjmData = { bjmDataPageVisible = false },
@@ -1270,7 +1276,8 @@ private fun ChartBrowserScreen(
                                 onDismissSettings()
                                 onDismissBjmData()
                             },
-                            modifier = Modifier.padding(horizontal = 12.dp),
+                            shape = RoundedCornerShape(0.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         )
                         NavigationDrawerItem(
                             label = { Text("BJM历史记录") },
@@ -1280,16 +1287,19 @@ private fun ChartBrowserScreen(
                                 onDismissSettings()
                                 onOpenBjmData()
                             },
-                            modifier = Modifier.padding(horizontal = 12.dp),
+                            shape = RoundedCornerShape(0.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         )
                         NavigationDrawerItem(
                             label = { Text("设置") },
                             selected = settingsPageVisible,
                             onClick = {
                                 closeDrawer()
+                                onDismissBjmData()
                                 onOpenSettings()
                             },
-                            modifier = Modifier.padding(horizontal = 12.dp),
+                            shape = RoundedCornerShape(0.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         )
                     }
                     HorizontalDivider()
