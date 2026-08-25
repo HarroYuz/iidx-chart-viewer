@@ -4,7 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -29,9 +29,15 @@ class BjmLoginActivity : Activity() {
             probeInFlight = true
             val currentPoll = this
             probeExecutor.execute {
-                val authenticated = runCatching {
-                    if (!hasWebViewCookies()) null else BjmClient(this@BjmLoginActivity).probeAuthMe()
-                }.getOrNull() != null
+                // Match GTDR: read the WebView CookieManager and send the
+                // cookie header explicitly to /api/auth/me.
+                val auth = runCatching {
+                    sessionManager.probeAuthMeWithWebViewCookies()
+                }.getOrNull()
+                auth?.let {
+                    Log.d(TAG, "authPoll status=${it.statusCode} cookieLength=${it.cookieLength} hadCookie=${it.hadCookie}")
+                }
+                val authenticated = auth?.success == true
                 runOnUiThread {
                     probeInFlight = false
                     if (authenticated) completeLogin()
@@ -42,10 +48,8 @@ class BjmLoginActivity : Activity() {
     }
 
     private companion object {
+        const val TAG = "BjmLoginActivity"
         const val AUTH_PROBE_INTERVAL_MS = 1_200L
-        const val COOKIE_SYNC_RETRY_COUNT = 8
-        const val COOKIE_SYNC_RETRY_DELAY_MS = 120L
-        const val ORIGIN = "https://u.bjmania.com"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,6 +77,11 @@ class BjmLoginActivity : Activity() {
                     return false
                 }
 
+                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    sessionManager.setReferer(url)
+                }
+
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
                     sessionManager.setReferer(url)
@@ -87,15 +96,19 @@ class BjmLoginActivity : Activity() {
 
     private fun attemptSessionRestoreOrLoadLogin() {
         probeExecutor.execute {
-            if (!hasWebViewCookies()) {
+            if (!sessionManager.hasWebViewCookies()) {
                 runOnUiThread {
                     if (!loginCompleted) loadLoginPage()
                 }
                 return@execute
             }
-            val authenticated = runCatching {
-                sessionManager.probeAuthMeWithWebViewCookies().success
-            }.getOrDefault(false)
+            val auth = runCatching {
+                sessionManager.probeAuthMeWithWebViewCookies()
+            }.getOrNull()
+            auth?.let {
+                Log.d(TAG, "restoreProbe status=${it.statusCode} cookieLength=${it.cookieLength} hadCookie=${it.hadCookie}")
+            }
+            val authenticated = auth?.success == true
             runOnUiThread {
                 if (loginCompleted) return@runOnUiThread
                 if (authenticated) completeLogin() else loadLoginPage()
@@ -108,21 +121,14 @@ class BjmLoginActivity : Activity() {
         // untouched so the user can recover a session without losing login
         // state maintained by the browser.
         sessionManager.clearNativeSession()
+        webView.clearHistory()
+        webView.clearCache(true)
+        webView.clearFormData()
         handler.post {
             if (loginCompleted || !::webView.isInitialized) return@post
             sessionManager.setReferer("https://u.bjmania.com/login")
             webView.loadUrl("https://u.bjmania.com/login")
         }
-    }
-
-    private fun hasWebViewCookies(): Boolean {
-        val cookies = CookieManager.getInstance()
-        cookies.flush()
-        repeat(COOKIE_SYNC_RETRY_COUNT) {
-            if (!cookies.getCookie(ORIGIN).isNullOrBlank()) return true
-            SystemClock.sleep(COOKIE_SYNC_RETRY_DELAY_MS)
-        }
-        return !cookies.getCookie(ORIGIN).isNullOrBlank()
     }
 
     override fun onBackPressed() {

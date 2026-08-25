@@ -9,6 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -25,13 +26,14 @@ class BjmClient(context: Context) {
     }
 
     suspend fun fetchScores(): BjmSyncResult = withContext(Dispatchers.IO) {
-        val user = authMe() ?: throw BjmException("BJM 登录态不可用，请先登录 BJMANIA")
+        val user = authMe()
         val body = requestGrpc("/api/WebUI/GetIidxScores")
         val decoded = IidxScoreProto.decodeGrpcWeb(body)
         BjmSyncResult(user = user, scores = decoded.scores, status = decoded.status)
     }
 
-    fun probeAuthMe(): BjmUser? = authMe()
+    /** Uses the same explicit WebView Cookie header probe as GTDR's login activity. */
+    fun probeAuthMe(): BjmAuthResult = authMeResult()
 
     fun clearSession() = sessionManager.clearAllSession()
 
@@ -53,17 +55,72 @@ class BjmClient(context: Context) {
             ?: throw BjmException("BJM 音乐数据库为空")
     }
 
-    private fun authMe(): BjmUser? {
-        val response = request("/api/auth/me", "GET", null, "application/json")
-        if (response.code !in 200..299) return null
-        return runCatching {
-            val json = JSONObject(response.body.toString(Charsets.UTF_8))
+    private fun authMe(): BjmUser {
+        val result = authMeResult()
+        return result.user ?: throw BjmAuthException(
+            result.failure ?: BjmAuthFailure(BjmAuthFailureKind.INVALID_RESPONSE),
+        )
+    }
+
+    private fun authMeResult(): BjmAuthResult {
+        val response = try {
+            // GTDR's login-state check reads the WebView cookie header and
+            // sends it explicitly instead of relying on OkHttp's CookieJar.
+            sessionManager.probeAuthMeWithWebViewCookies()
+        } catch (error: IOException) {
+            return BjmAuthResult(
+                user = null,
+                failure = BjmAuthFailure(BjmAuthFailureKind.NETWORK, causeMessage = error.message),
+                statusCode = 0,
+                cookieLength = 0,
+                hadCookie = false,
+            )
+        }
+
+        if (!response.hadCookie) {
+            return BjmAuthResult(
+                user = null,
+                failure = BjmAuthFailure(BjmAuthFailureKind.NO_COOKIE),
+                statusCode = response.statusCode,
+                cookieLength = response.cookieLength,
+                hadCookie = false,
+            )
+        }
+        if (!response.success) {
+            return BjmAuthResult(
+                user = null,
+                failure = BjmAuthFailure.fromHttpStatus(response.statusCode),
+                statusCode = response.statusCode,
+                cookieLength = response.cookieLength,
+                hadCookie = true,
+            )
+        }
+
+        val user = runCatching {
+            val json = JSONObject(response.body)
             BjmUser(
                 id = json.optString("id"),
                 name = json.optString("name"),
                 email = json.optString("email"),
             ).takeIf { it.id.isNotBlank() }
         }.getOrNull()
+        return if (user != null) {
+            BjmAuthResult(
+                user = user,
+                failure = null,
+                statusCode = response.statusCode,
+                cookieLength = response.cookieLength,
+                hadCookie = true,
+            )
+        } else {
+            BjmAuthResult(
+                user = null,
+                failure = BjmAuthFailure(BjmAuthFailureKind.INVALID_RESPONSE, response.statusCode),
+                statusCode = response.statusCode,
+                cookieLength = response.cookieLength,
+                hadCookie = true,
+            )
+        }
     }
 
     private fun requestGrpc(path: String): ByteArray {
@@ -73,6 +130,9 @@ class BjmClient(context: Context) {
             body = ByteArray(0),
             contentType = "application/grpc-web+proto",
         )
+        if (response.code == 401 || response.code == 403) {
+            throw BjmAuthException(BjmAuthFailure.fromHttpStatus(response.code))
+        }
         if (response.code !in 200..299) throw BjmException("BJM 成绩请求失败 (${response.code})")
         return response.body
     }
@@ -126,7 +186,59 @@ data class BjmSyncResult(
     val status: Int,
 )
 
-class BjmException(message: String, cause: Throwable? = null) : Exception(message, cause)
+enum class BjmAuthFailureKind {
+    NO_COOKIE,
+    UNAUTHORIZED,
+    FORBIDDEN,
+    REDIRECT,
+    SERVER_ERROR,
+    HTTP_ERROR,
+    INVALID_RESPONSE,
+    NETWORK,
+}
+
+data class BjmAuthFailure(
+    val kind: BjmAuthFailureKind,
+    val statusCode: Int = 0,
+    val causeMessage: String? = null,
+) {
+    val userMessage: String
+        get() = when (kind) {
+            BjmAuthFailureKind.NO_COOKIE -> "未检测到 BJM 登录 Cookie，请先登录 BJM"
+            BjmAuthFailureKind.UNAUTHORIZED -> "BJM 登录态已失效（HTTP 401），请重新登录"
+            BjmAuthFailureKind.FORBIDDEN -> "BJM 拒绝了当前登录态（HTTP 403），请重新登录"
+            BjmAuthFailureKind.REDIRECT -> "BJM 登录验证被重定向（HTTP $statusCode），请重新登录"
+            BjmAuthFailureKind.SERVER_ERROR -> "BJM 服务器异常（HTTP $statusCode），请稍后重试"
+            BjmAuthFailureKind.HTTP_ERROR -> "BJM 登录验证失败（HTTP $statusCode）"
+            BjmAuthFailureKind.INVALID_RESPONSE -> "BJM 登录验证响应格式异常，请稍后重试"
+            BjmAuthFailureKind.NETWORK -> "无法连接 BJM，请检查网络"
+        }
+
+    companion object {
+        fun fromHttpStatus(statusCode: Int): BjmAuthFailure = when (statusCode) {
+            401 -> BjmAuthFailure(BjmAuthFailureKind.UNAUTHORIZED, statusCode)
+            403 -> BjmAuthFailure(BjmAuthFailureKind.FORBIDDEN, statusCode)
+            in 300..399 -> BjmAuthFailure(BjmAuthFailureKind.REDIRECT, statusCode)
+            in 500..599 -> BjmAuthFailure(BjmAuthFailureKind.SERVER_ERROR, statusCode)
+            else -> BjmAuthFailure(BjmAuthFailureKind.HTTP_ERROR, statusCode)
+        }
+    }
+}
+
+data class BjmAuthResult(
+    val user: BjmUser?,
+    val failure: BjmAuthFailure?,
+    val statusCode: Int,
+    val cookieLength: Int,
+    val hadCookie: Boolean,
+)
+
+open class BjmException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+class BjmAuthException(
+    val failure: BjmAuthFailure,
+    cause: Throwable? = null,
+) : BjmException(failure.userMessage, cause)
 
 private data class HttpResponse(val code: Int, val body: ByteArray)
 

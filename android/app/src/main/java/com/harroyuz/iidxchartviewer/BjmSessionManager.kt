@@ -134,7 +134,7 @@ class BjmSessionManager private constructor(context: Context) {
 
     fun probeAuthMeWithWebViewCookies(): AuthCheckResult {
         val cookieHeader = readWebViewCookieHeaderWithWarmup()
-        if (cookieHeader.isNullOrBlank()) return AuthCheckResult(false, 0, false)
+        if (cookieHeader.isNullOrBlank()) return AuthCheckResult(false, 0, 0, false, "")
         val request = Request.Builder()
             .url("$ORIGIN/api/auth/me")
             .header("Accept", "application/json")
@@ -144,7 +144,13 @@ class BjmSessionManager private constructor(context: Context) {
         probeClient.newCall(request).execute().use { response ->
             webViewCookieManager.flush()
             syncFromWebViewCookieManager()
-            return AuthCheckResult(response.isSuccessful, response.code, cookieHeader.length > 0)
+            return AuthCheckResult(
+                success = response.isSuccessful,
+                statusCode = response.code,
+                cookieLength = cookieHeader.length,
+                hadCookie = true,
+                body = response.body?.string().orEmpty(),
+            )
         }
     }
 
@@ -204,7 +210,13 @@ class BjmSessionManager private constructor(context: Context) {
             }
             .firstOrNull()
 
-    data class AuthCheckResult(val success: Boolean, val statusCode: Int, val hadCookie: Boolean)
+    data class AuthCheckResult(
+        val success: Boolean,
+        val statusCode: Int,
+        val cookieLength: Int,
+        val hadCookie: Boolean,
+        val body: String,
+    )
 }
 
 private class BjmCookieJar : CookieJar {

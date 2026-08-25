@@ -526,6 +526,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 action()
+            } catch (error: BjmAuthException) {
+                message = "${error.message}；本地成绩仍可查看"
             } catch (error: Exception) {
                 message = error.message ?: "数据同步失败"
             } finally {
@@ -723,14 +725,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun syncBjmScoresData(): Int {
-        val result = try {
-            bjmClient.fetchScores()
-        } catch (error: BjmException) {
-            if (error.message?.contains("登录态不可用") == true) {
-                message = "BJM 登录状态暂时不可用，请重新登录；本地成绩仍可查看"
-            }
-            throw error
-        }
+        val result = bjmClient.fetchScores()
         val mergedHistory = withContext(Dispatchers.IO) {
             val previousHistory = store.loadBjmHistory()
             appendBjmHistory(previousHistory, result.scores).also(store::saveBjmHistory)
