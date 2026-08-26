@@ -63,7 +63,7 @@ class BjmClient(context: Context) {
     }
 
     private fun authMeResult(): BjmAuthResult {
-        val response = try {
+        var response = try {
             // GTDR's login-state check reads the WebView cookie header and
             // sends it explicitly instead of relying on OkHttp's CookieJar.
             sessionManager.probeAuthMeWithWebViewCookies()
@@ -75,6 +75,21 @@ class BjmClient(context: Context) {
                 cookieLength = 0,
                 hadCookie = false,
             )
+        }
+
+        if (response.statusCode == 401 || response.statusCode == 403) {
+            sessionManager.refreshWebViewCookiesBlocking()
+            response = try {
+                sessionManager.probeAuthMeWithWebViewCookies()
+            } catch (error: IOException) {
+                return BjmAuthResult(
+                    user = null,
+                    failure = BjmAuthFailure(BjmAuthFailureKind.NETWORK, causeMessage = error.message),
+                    statusCode = 0,
+                    cookieLength = 0,
+                    hadCookie = false,
+                )
+            }
         }
 
         if (!response.hadCookie) {
@@ -138,6 +153,15 @@ class BjmClient(context: Context) {
     }
 
     private fun request(path: String, method: String, body: ByteArray?, contentType: String): HttpResponse {
+        val response = executeRequest(path, method, body, contentType)
+        if (response.code == 401 || response.code == 403) {
+            sessionManager.refreshWebViewCookiesBlocking()
+            return executeRequest(path, method, body, contentType)
+        }
+        return response
+    }
+
+    private fun executeRequest(path: String, method: String, body: ByteArray?, contentType: String): HttpResponse {
         sessionManager.syncFromWebViewCookieManager()
         val request = Request.Builder()
             .url(origin + path)

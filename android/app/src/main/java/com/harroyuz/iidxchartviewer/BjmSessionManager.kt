@@ -2,8 +2,14 @@ package com.harroyuz.iidxchartviewer
 
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -13,6 +19,10 @@ import okhttp3.Request
 import okhttp3.Response
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Keeps the WebView login session and native API requests in sync.
@@ -44,6 +54,9 @@ class BjmSessionManager private constructor(context: Context) {
         setAcceptCookie(true)
     }
     private val cookieJar = BjmCookieJar()
+    private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val webViewRefreshLock = Any()
     private var referer = DEFAULT_REFERER
     private var userAgent = ""
 
@@ -151,6 +164,77 @@ class BjmSessionManager private constructor(context: Context) {
                 hadCookie = true,
                 body = response.body?.string().orEmpty(),
             )
+        }
+    }
+
+    /**
+     * Gives WebView one silent request to receive any refreshed session
+     * cookies. This is intentionally blocking only the calling worker thread;
+     * WebView creation and callbacks remain on the main thread.
+     */
+    fun refreshWebViewCookiesBlocking(timeoutMillis: Long = 8_000L): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) return false
+        synchronized(webViewRefreshLock) {
+            val latch = CountDownLatch(1)
+            val refreshed = AtomicBoolean(false)
+            val finished = AtomicBoolean(false)
+            val webViewRef = AtomicReference<WebView?>(null)
+            val currentUserAgent = synchronized(this) { userAgent }
+
+            fun finish(success: Boolean) {
+                if (!finished.compareAndSet(false, true)) return
+                if (success) webViewCookieManager.flush()
+                webViewRef.getAndSet(null)?.let { webView ->
+                    webView.stopLoading()
+                    webView.destroy()
+                }
+                refreshed.set(success)
+                latch.countDown()
+            }
+
+            mainHandler.post {
+                if (finished.get()) return@post
+                try {
+                    val webView = WebView(appContext)
+                    webViewRef.set(webView)
+                    webView.settings.javaScriptEnabled = true
+                    webView.settings.domStorageEnabled = true
+                    if (currentUserAgent.isNotBlank()) {
+                        webView.settings.userAgentString = currentUserAgent
+                    }
+                    webViewCookieManager.setAcceptCookie(true)
+                    webViewCookieManager.setAcceptThirdPartyCookies(webView, true)
+                    webView.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String) {
+                            super.onPageFinished(view, url)
+                            mainHandler.postDelayed({ finish(true) }, 200L)
+                        }
+
+                        override fun onReceivedError(
+                            view: WebView,
+                            request: WebResourceRequest,
+                            error: WebResourceError,
+                        ) {
+                            super.onReceivedError(view, request, error)
+                            if (request.isForMainFrame) finish(false)
+                        }
+                    }
+                    webView.loadUrl("$ORIGIN/api/auth/me", mapOf("Accept" to "application/json"))
+                } catch (_: Throwable) {
+                    finish(false)
+                }
+            }
+
+            try {
+                if (!latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+                    mainHandler.post { finish(false) }
+                }
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                mainHandler.post { finish(false) }
+            }
+            syncFromWebViewCookieManager()
+            return refreshed.get()
         }
     }
 
