@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import com.harroyuz.iidxchartviewer.ui.components.DifficultyBackground
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -103,37 +105,41 @@ private fun DifficultyScoreCard(
     val accent = difficultyColor(chart.difficulty)
     val shape = MaterialTheme.shapes.medium
     val available = chart.textageUrl != null
-    Row(
+    Box(
         Modifier.fillMaxWidth()
-            .browseSharedBounds("difficulty:${chart.id}")
-            .clip(shape)
-            .background(if (available) CardSurface else Background)
-            .border(1.dp, accent.copy(alpha = if (available) .35f else .15f), shape)
-            .clickable(enabled = available) { onOpenChart(chart) }
-            .heightIn(min = 72.dp)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .browseSharedBounds("difficulty:${chart.id}", overlayZ = 1f)
+            .heightIn(min = 72.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                "${difficultyName(chart.difficulty)} ${chart.level}",
-                color = accent,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(1.dp))
-            Text(
-                "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
-                color = Muted,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 4.dp),
+        DifficultyBackground(chart, modifier = Modifier.matchParentSize())
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(shape)
+                .clickable(enabled = available) { onOpenChart(chart) }
+                .heightIn(min = 72.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "${difficultyName(chart.difficulty)} ${chart.level}",
+                    color = accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(1.dp))
+                Text(
+                    "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
+                    color = Muted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+            ChartScoreSummary(
+                score = score,
+                noteCount = chart.notes,
+                modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
             )
         }
-        ChartScoreSummary(
-            score = score,
-            noteCount = chart.notes,
-            modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
-        )
     }
 }

@@ -21,6 +21,7 @@ internal data class BrowseMotion(
     val visibility: AnimatedVisibilityScope?,
     val betweenDetails: Boolean,
     val callerVisible: Boolean = true,
+    val movingSongKey: String? = null,
 )
 
 internal val LocalBrowseMotion = staticCompositionLocalOf<BrowseMotion?> { null }
@@ -32,6 +33,7 @@ internal fun Modifier.browseSharedBounds(
     key: String?,
     stable: Boolean = false,
     stableInDetails: Boolean = false,
+    overlayZ: Float? = null,
 ): Modifier {
     val motion = LocalBrowseMotion.current ?: return this
     if (key == null) return this
@@ -42,14 +44,14 @@ internal fun Modifier.browseSharedBounds(
                 sharedContentState = state,
                 visible = motion.callerVisible,
                 boundsTransform = { _, _ -> tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
-                zIndexInOverlay = if (stable) 2f else 0f,
+                zIndexInOverlay = overlayZ ?: if (stable) 2f else 0f,
             )
         } else if (stable || (stableInDetails && motion.betweenDetails)) {
             sharedElement(
                 sharedContentState = state,
                 animatedVisibilityScope = motion.visibility,
                 boundsTransform = { _, _ -> tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
-                zIndexInOverlay = 2f,
+                zIndexInOverlay = overlayZ ?: 2f,
             )
         } else {
             sharedBounds(
@@ -59,6 +61,7 @@ internal fun Modifier.browseSharedBounds(
                 enter = fadeIn(tween(147, delayMillis = 60)),
                 exit = fadeOut(tween(120)),
                 resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(),
+                zIndexInOverlay = overlayZ ?: 0f,
             )
         }
     }

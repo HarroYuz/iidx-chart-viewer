@@ -15,13 +15,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
+import androidx.compose.runtime.CompositionLocalProvider
+import com.harroyuz.iidxchartviewer.ui.motion.LocalBrowseMotion
+import com.harroyuz.iidxchartviewer.ui.components.DifficultyBackground
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +67,23 @@ internal fun SongGroupRow(
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
     modifier: Modifier = Modifier,
+) {
+    val motion = LocalBrowseMotion.current
+    CompositionLocalProvider(
+        LocalBrowseMotion provides motion?.takeIf { it.movingSongKey == null || it.movingSongKey == song.key },
+    ) {
+        SongGroupContent(song, bjmIndex, onOpenSong, onOpenChart, onCopyText, modifier)
+    }
+}
+
+@Composable
+private fun SongGroupContent(
+    song: SongGroup,
+    bjmIndex: BjmIndex,
+    onOpenSong: (IidxChart) -> Unit,
+    onOpenChart: (IidxChart) -> Unit,
+    onCopyText: (String) -> Unit,
+    modifier: Modifier,
 ) {
     val representative = song.charts.firstOrNull()
     Column(
@@ -116,11 +136,11 @@ internal fun SongGroupRow(
             }
         }
         Spacer(Modifier.height(7.dp))
-        LazyRow(
-            Modifier.fillMaxWidth().heightIn(min = 44.dp),
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 44.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            items(song.charts, key = { it.id }) { chart ->
+            song.charts.forEach { chart ->
                 DifficultyChip(
                     chart = chart,
                     onOpenChart = onOpenChart,
@@ -145,29 +165,17 @@ internal fun DifficultyChip(
     val available = chart.textageUrl != null
     Box(
         modifier = Modifier.size(width = 42.dp, height = 34.dp)
-            .browseSharedBounds(if (sharedDifficulty) "difficulty:${chart.id}" else null),
+            .browseSharedBounds(if (sharedDifficulty) "difficulty:${chart.id}" else null, overlayZ = 1f),
     ) {
+        DifficultyBackground(
+            chart = chart,
+            selected = selected,
+            shared = sharedDifficulty,
+            modifier = Modifier.matchParentSize(),
+        )
         Box(
             Modifier.fillMaxSize()
                 .clip(shape)
-                .background(if (available) accent.copy(alpha = .13f) else Background)
-                .then(
-                    if (available) {
-                        Modifier.border(
-                            if (selected) 2.dp else 1.dp,
-                            accent.copy(alpha = if (selected) .95f else .55f),
-                            shape,
-                        )
-                    } else {
-                        Modifier.drawBehind {
-                            drawRoundRect(
-                                color = Muted.copy(alpha = .7f),
-                                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 4.dp.toPx()))),
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
-                            )
-                        }
-                    },
-                )
                 .clickable(enabled = available) { onOpenChart(chart) }
                 .padding(horizontal = 5.dp),
             contentAlignment = Alignment.Center,
