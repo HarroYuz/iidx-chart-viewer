@@ -139,6 +139,13 @@ private fun DifficultyScoreCard(
                     lineHeight = 16.sp,
                     fontWeight = FontWeight.Bold,
                 )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                ChartScoreSummary(
+                    score = score,
+                    noteCount = chart.notes,
+                    modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
+                )
                 if (scoreDate != null) {
                     Text(
                         scoreDate,
@@ -150,11 +157,6 @@ private fun DifficultyScoreCard(
                     )
                 }
             }
-            ChartScoreSummary(
-                score = score,
-                noteCount = chart.notes,
-                modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
-            )
         }
     }
 }
