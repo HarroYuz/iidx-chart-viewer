@@ -21,8 +21,8 @@ android {
         applicationId = "com.harroyuz.iidxchartviewer"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.0.1"
     }
 
     signingConfigs {
@@ -68,6 +68,7 @@ dependencies {
     implementation("org.mozilla:rhino:1.7.15")
 
     implementation(platform("androidx.compose:compose-bom:2025.08.00"))
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")

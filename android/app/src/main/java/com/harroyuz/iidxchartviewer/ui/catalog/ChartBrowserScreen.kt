@@ -114,6 +114,8 @@ internal fun ChartBrowserScreen(
     onDismissBjmData: () -> Unit,
     onOpenSongFromBjmHistory: (IidxChart) -> Unit,
     onLogoutBjm: () -> Unit,
+    visualEffectsDisabled: Boolean,
+    onVisualEffectsDisabledChange: (Boolean) -> Unit,
     autoUpdateEnabled: Boolean,
     onAutoUpdateEnabledChange: (Boolean) -> Unit,
     onClearChartCache: () -> Unit,
@@ -251,6 +253,8 @@ internal fun ChartBrowserScreen(
     ) {
         if (settingsPageVisible) {
             UpdateSettingsScreen(
+                visualEffectsDisabled = visualEffectsDisabled,
+                onVisualEffectsDisabledChange = onVisualEffectsDisabledChange,
                 enabled = autoUpdateEnabled,
                 onEnabledChange = onAutoUpdateEnabledChange,
                 onOpenMenu = { drawerScope.launch { drawerState.open() } },

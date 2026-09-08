@@ -48,6 +48,8 @@ private fun formatDataSourceLastSync(value: Long): String =
 
 @Composable
 internal fun UpdateSettingsScreen(
+    visualEffectsDisabled: Boolean,
+    onVisualEffectsDisabledChange: (Boolean) -> Unit,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onOpenMenu: () -> Unit,
@@ -86,6 +88,19 @@ internal fun UpdateSettingsScreen(
                     Text("每天检查 GitHub Release 是否有新版本", color = Muted, fontSize = 12.sp)
                 }
                 Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+            HorizontalDivider(color = Outline)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("禁用视觉效果", color = Ink, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    Text("关闭曲目和谱面页面的展开动画，直接切换页面", color = Muted, fontSize = 12.sp)
+                }
+                Switch(checked = visualEffectsDisabled, onCheckedChange = onVisualEffectsDisabledChange)
             }
             HorizontalDivider(color = Outline)
             SettingsActionRow(

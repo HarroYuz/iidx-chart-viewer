@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
+import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +61,7 @@ internal fun SongDetailScreen(
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().browseSharedBounds("song-surface:${songGroupKey(song)}").background(Background)) {
         AppTopBar(title = "曲目信息", onNavigate = onBack) {
             PlayStyleButton(mode, onStyleToggle)
         }
@@ -67,7 +69,7 @@ internal fun SongDetailScreen(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}").padding(end = 12.dp)) {
                 AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
                 Spacer(Modifier.height(3.dp))
                 AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
@@ -111,6 +113,7 @@ private fun DifficultyScoreCard(
     val available = chart.textageUrl != null
     Column(
         Modifier.fillMaxWidth()
+            .browseSharedBounds("chart-surface:${chart.id}")
             .clip(shape)
             .background(if (available) CardSurface else Background)
             .border(1.dp, accent.copy(alpha = if (available) .35f else .15f), shape)

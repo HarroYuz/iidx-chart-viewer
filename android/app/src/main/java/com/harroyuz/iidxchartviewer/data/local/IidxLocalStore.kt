@@ -226,6 +226,12 @@ class IidxLocalStore(context: Context) {
         preferences.edit().putLong("textage_last_sync_at", timestamp).apply()
     }
 
+    fun visualEffectsDisabled(): Boolean = preferences.getBoolean("visual_effects_disabled", false)
+
+    fun setVisualEffectsDisabled(disabled: Boolean) {
+        preferences.edit().putBoolean("visual_effects_disabled", disabled).apply()
+    }
+
     fun autoUpdateEnabled(): Boolean = preferences.getBoolean("auto_update_enabled", true)
 
     fun setAutoUpdateEnabled(enabled: Boolean) {

@@ -101,6 +101,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         private set
     internal var message by mutableStateOf<String?>(null)
         private set
+    internal var visualEffectsDisabled by mutableStateOf(false)
+        private set
     internal var autoUpdateEnabled by mutableStateOf(true)
         private set
     internal var updateChecking by mutableStateOf(false)
@@ -111,6 +113,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         private set
     internal var updateInstalling by mutableStateOf(false)
         private set
+    private var settingsReturnDestination = AppDestination.CATALOG
     private var destination by mutableStateOf(AppDestination.CATALOG)
     internal val settingsPageVisible: Boolean get() = destination == AppDestination.SETTINGS
     internal val bjmDataPageVisible: Boolean get() = destination == AppDestination.HISTORY
@@ -120,6 +123,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     init {
         localCatalogPresent = store.hasTextageCatalogMarker()
         autoUpdateEnabled = store.autoUpdateEnabled()
+        visualEffectsDisabled = store.visualEffectsDisabled()
         textageLastSyncAt = store.textageLastSyncAt()
         bjmMusicLastSyncAt = store.bjmMusicRevision()
         bjmScoresLastSyncAt = store.bjmScoresRevision()
@@ -247,12 +251,20 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
 
     internal fun dismissMessage() { message = null }
     internal fun showSettings(visible: Boolean) {
-        if (visible) destination = AppDestination.SETTINGS
-        else if (settingsPageVisible) destination = AppDestination.CATALOG
+        if (visible && !settingsPageVisible) {
+            settingsReturnDestination = destination
+            destination = AppDestination.SETTINGS
+        } else if (!visible && settingsPageVisible) {
+            destination = settingsReturnDestination
+        }
     }
     internal fun showBjmData(visible: Boolean) {
         if (visible) destination = AppDestination.HISTORY
         else if (bjmDataPageVisible) destination = AppDestination.CATALOG
+    }
+    internal fun changeVisualEffectsDisabled(disabled: Boolean) {
+        visualEffectsDisabled = disabled
+        store.setVisualEffectsDisabled(disabled)
     }
     internal fun changeAutoUpdate(enabled: Boolean) {
         autoUpdateEnabled = enabled

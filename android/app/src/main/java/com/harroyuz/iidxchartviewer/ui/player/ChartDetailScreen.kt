@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
+import androidx.compose.foundation.background
+import com.harroyuz.iidxchartviewer.ui.theme.Background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
+import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +68,7 @@ internal fun ChartDetailScreen(
     onCopyText: (String) -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().browseSharedBounds("song-surface:${songGroupKey(chart)}").background(Background)) {
         AppTopBar(title = "谱面浏览", onNavigate = onBack) {
             PlayStyleButton(mode, onStyleToggle)
         }
@@ -72,7 +76,7 @@ internal fun ChartDetailScreen(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}").padding(end = 12.dp)) {
                 AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
                 Spacer(Modifier.height(3.dp))
                 AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
@@ -117,22 +121,24 @@ internal fun ChartDetailScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        when {
-            loading -> Box(Modifier.fillMaxWidth().height(520.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Purple)
-                    Spacer(Modifier.height(12.dp))
-                    Text("正在获取并解析 Textage…", color = Muted, fontSize = 12.sp)
+        Box(Modifier.fillMaxWidth().weight(1f).browseSharedBounds("chart-surface:${chart.id}").background(Background)) {
+            when {
+                loading -> Box(Modifier.fillMaxWidth().height(520.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Purple)
+                        Spacer(Modifier.height(12.dp))
+                        Text("正在获取并解析 Textage…", color = Muted, fontSize = 12.sp)
+                    }
                 }
+                chartData == null -> ChartLoadError(onRetry)
+                chartData.notes.isEmpty() -> ChartParseWarning(chartData.parserMessage ?: "没有可显示的时序数据。", onRetry)
+                else -> ChartPlayer(
+                    data = chartData,
+                    settings = playerSettings,
+                    onSettingsChange = onPlayerSettingsChange,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
-            chartData == null -> ChartLoadError(onRetry)
-            chartData.notes.isEmpty() -> ChartParseWarning(chartData.parserMessage ?: "没有可显示的时序数据。", onRetry)
-            else -> ChartPlayer(
-                data = chartData,
-                settings = playerSettings,
-                onSettingsChange = onPlayerSettingsChange,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
         }
     }
 }

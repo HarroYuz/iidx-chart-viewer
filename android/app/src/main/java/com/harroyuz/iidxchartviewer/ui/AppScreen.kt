@@ -1,9 +1,22 @@
 package com.harroyuz.iidxchartviewer.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.harroyuz.iidxchartviewer.ui.motion.BrowseMotion
+import com.harroyuz.iidxchartviewer.ui.motion.LocalBrowseMotion
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -13,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import com.harroyuz.iidxchartviewer.data.remote.update.GithubReleaseInfo
@@ -36,6 +48,20 @@ import com.harroyuz.iidxchartviewer.ui.player.ChartDetailScreen
 import com.harroyuz.iidxchartviewer.ui.settings.UpdateDialog
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 
+private data class BrowsePage(
+    val song: IidxChart?,
+    val chart: IidxChart?,
+    val chartData: TextageChartData?,
+    val chartLoading: Boolean,
+) {
+    val key: String get() = when {
+        chart != null -> "chart"
+        song != null -> "song"
+        else -> "browser"
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 internal fun IidxApp(
     state: IidxAppState,
@@ -56,6 +82,8 @@ internal fun IidxApp(
     dpPlayerSettings: PlayerSettings,
     message: String?,
     onDismissMessage: () -> Unit,
+    visualEffectsDisabled: Boolean,
+    onVisualEffectsDisabledChange: (Boolean) -> Unit,
     autoUpdateEnabled: Boolean,
     localDataLoading: Boolean,
     localDataProgress: Float,
@@ -118,149 +146,172 @@ internal fun IidxApp(
                     onRetry = onRefreshTextage,
                 )
             } else {
-                // Keep the browser composed behind the detail screen so its
-                // query, style and LazyColumn position survive a round trip.
-                ChartBrowserScreen(
-                    state = state,
-                    bjmHistory = bjmHistory,
-                    bjmIndex = bjmIndex,
-                    mode = browserMode,
-                    onModeChange = { browserMode = it },
-                    textageSyncing = textageSyncing,
-                    textageProgress = textageProgress,
-                    textageError = textageError,
-                    textageLastSyncAt = textageLastSyncAt,
-                    bjmMusicLastSyncAt = bjmMusicLastSyncAt,
-                    bjmScoresLastSyncAt = bjmScoresLastSyncAt,
-                    onLogin = onLogin,
-                    onLogoutBjm = onLogoutBjm,
-                    onOpenBjmData = onOpenBjmData,
-                    onRefreshTextage = onRefreshTextage,
-                    onFullDataSync = onFullDataSync,
-                    onSyncTextage = onSyncTextage,
-                    onSyncBjmMusic = onSyncBjmMusic,
-                    onSyncBjmScores = onSyncBjmScores,
-                    onOpenGithub = onOpenGithub,
-                    onCheckForUpdates = onCheckForUpdates,
-                    updateChecking = updateChecking,
-                    syncTarget = syncTarget,
-                    syncStage = syncStage,
-                    syncProgress = syncProgress,
-                    settingsPageVisible = settingsPageVisible,
-                    onOpenSettings = onOpenSettings,
-                    onDismissSettings = onDismissSettings,
-                    bjmDataPageVisible = bjmDataPageVisible,
-                    onDismissBjmData = onDismissBjmData,
-                    onOpenSongFromBjmHistory = onOpenSongFromBjmHistory,
-                    autoUpdateEnabled = autoUpdateEnabled,
-                    onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
-                    onClearChartCache = onClearChartCache,
-                    onOpenChart = onOpenChart,
-                    onOpenSong = onOpenSong,
-                    onCopyText = onCopyText,
-                    showingDetail = selectedSong != null || selectedChart != null,
-                    onBack = onBack,
-                    onRequestExit = onRequestExit,
-                    modifier = Modifier
-                        .alpha(if (selectedSong == null && selectedChart == null) 1f else 0f)
-                        .then(
-                            if (selectedSong != null || selectedChart != null) {
-                                Modifier.pointerInput(Unit) {
-                                    awaitPointerEventScope {
-                                        while (true) {
-                                            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { change ->
-                                                change.consume()
+                val pageState = rememberSaveableStateHolder()
+                val showingDetail = selectedSong != null || selectedChart != null
+                val currentPage = BrowsePage(selectedSong, selectedChart, chartData, chartLoading)
+                BackHandler(showingDetail, onBack = onBack)
+                SharedTransitionLayout {
+                    AnimatedContent(
+                        targetState = currentPage,
+                        contentKey = { it.key },
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = {
+                            if (visualEffectsDisabled) {
+                                EnterTransition.None togetherWith ExitTransition.None
+                            } else {
+                                fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(180))
+                            }.using(null)
+                        },
+                        label = "browse-page",
+                    ) { page ->
+                        CompositionLocalProvider(
+                            LocalBrowseMotion provides if (visualEffectsDisabled) null else BrowseMotion(this@SharedTransitionLayout, this),
+                        ) {
+                            pageState.SaveableStateProvider(page.key) {
+                                Box(Modifier.fillMaxSize().then(
+                                    if (page.key != currentPage.key) Modifier.pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
                                             }
                                         }
+                                    } else Modifier,
+                                )) {
+                                    val selectedSong = page.song
+                                    val selectedChart = page.chart
+                                    if (page.key == "browser") {
+                                        ChartBrowserScreen(
+                                            state = state,
+                                            bjmHistory = bjmHistory,
+                                            bjmIndex = bjmIndex,
+                                            mode = browserMode,
+                                            onModeChange = { browserMode = it },
+                                            textageSyncing = textageSyncing,
+                                            textageProgress = textageProgress,
+                                            textageError = textageError,
+                                            textageLastSyncAt = textageLastSyncAt,
+                                            bjmMusicLastSyncAt = bjmMusicLastSyncAt,
+                                            bjmScoresLastSyncAt = bjmScoresLastSyncAt,
+                                            onLogin = onLogin,
+                                            onLogoutBjm = onLogoutBjm,
+                                            onOpenBjmData = onOpenBjmData,
+                                            onRefreshTextage = onRefreshTextage,
+                                            onFullDataSync = onFullDataSync,
+                                            onSyncTextage = onSyncTextage,
+                                            onSyncBjmMusic = onSyncBjmMusic,
+                                            onSyncBjmScores = onSyncBjmScores,
+                                            onOpenGithub = onOpenGithub,
+                                            onCheckForUpdates = onCheckForUpdates,
+                                            updateChecking = updateChecking,
+                                            syncTarget = syncTarget,
+                                            syncStage = syncStage,
+                                            syncProgress = syncProgress,
+                                            settingsPageVisible = settingsPageVisible,
+                                            onOpenSettings = onOpenSettings,
+                                            onDismissSettings = onDismissSettings,
+                                            bjmDataPageVisible = bjmDataPageVisible,
+                                            onDismissBjmData = onDismissBjmData,
+                                            onOpenSongFromBjmHistory = onOpenSongFromBjmHistory,
+                                            visualEffectsDisabled = visualEffectsDisabled,
+                                            onVisualEffectsDisabledChange = onVisualEffectsDisabledChange,
+                                            autoUpdateEnabled = autoUpdateEnabled,
+                                            onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
+                                            onClearChartCache = onClearChartCache,
+                                            onOpenChart = onOpenChart,
+                                            onOpenSong = onOpenSong,
+                                            onCopyText = onCopyText,
+                                            showingDetail = showingDetail,
+                                            onBack = onBack,
+                                            onRequestExit = onRequestExit,
+                                        )
+                                    }
+                                    if (selectedChart != null) {
+                                        val selectedSongKey = songGroupKey(selectedChart)
+                                        val songCharts = chartsBySongKey[selectedSongKey].orEmpty()
+                                        val family = songCharts
+                                            .filter {
+                                                it.mode == selectedChart.mode
+                                            }
+                                            .groupBy { it.difficulty }
+                                            .values
+                                            .mapNotNull { sameDifficulty ->
+                                                sameDifficulty.maxWithOrNull(
+                                                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                                                )
+                                            }
+                                            .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
+                                        ChartDetailScreen(
+                                            chart = selectedChart,
+                                            siblingCharts = family,
+                                            bjmIndex = bjmIndex,
+                                            chartData = page.chartData,
+                                            loading = page.chartLoading,
+                                            playerSettings = if (selectedChart.mode == "DP") dpPlayerSettings else spPlayerSettings,
+                                            onBack = onBack,
+                                            onRetry = onRetryChart,
+                                            mode = browserMode,
+                                            onStyleToggle = {
+                                                val targetMode = if (browserMode == "SP") "DP" else "SP"
+                                                val alternate = songCharts
+                                                    .filter {
+                                                        it.mode == targetMode &&
+                                                            it.textageUrl != null
+                                                    }
+                                                    .maxWithOrNull(
+                                                        compareBy<IidxChart>({ difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
+                                                    )
+                                                browserMode = targetMode
+                                                if (alternate != null) onOpenChart(alternate) else onBack()
+                                            },
+                                            onOpenChart = onOpenChart,
+                                            onCopyText = onCopyText,
+                                            onPlayerSettingsChange = { settings ->
+                                                onPlayerSettingsChange(selectedChart.mode, settings)
+                                            },
+                                        )
+                                    } else if (selectedSong != null) {
+                                        val selectedSongKey = songGroupKey(selectedSong)
+                                        val songCharts = chartsBySongKey[selectedSongKey].orEmpty()
+                                        val family = songCharts
+                                            .filter {
+                                                it.mode == selectedSong.mode
+                                            }
+                                            .groupBy { it.difficulty }
+                                            .values
+                                            .mapNotNull { sameDifficulty ->
+                                                sameDifficulty.maxWithOrNull(
+                                                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                                                )
+                                            }
+                                            .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
+                                        SongDetailScreen(
+                                            song = selectedSong,
+                                            charts = family,
+                                            bjmIndex = bjmIndex,
+                                            mode = browserMode,
+                                            onBack = onBack,
+                                            onStyleToggle = {
+                                                val targetMode = if (browserMode == "SP") "DP" else "SP"
+                                                val alternate = songCharts
+                                                    .filter {
+                                                        it.mode == targetMode
+                                                    }
+                                                    .maxWithOrNull(
+                                                        compareBy<IidxChart>({ it.textageUrl != null }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
+                                                    )
+                                                if (alternate != null) {
+                                                    browserMode = targetMode
+                                                    onOpenSong(alternate)
+                                                }
+                                            },
+                                            onOpenChart = onOpenChart,
+                                            onCopyText = onCopyText,
+                                        )
                                     }
                                 }
-                            } else {
-                                Modifier
-                            },
-                        ),
-                )
-                if (selectedChart != null) {
-                    val selectedSongKey = songGroupKey(selectedChart)
-                    val songCharts = chartsBySongKey[selectedSongKey].orEmpty()
-                    val family = songCharts
-                        .filter {
-                            it.mode == selectedChart.mode
-                        }
-                        .groupBy { it.difficulty }
-                        .values
-                        .mapNotNull { sameDifficulty ->
-                            sameDifficulty.maxWithOrNull(
-                                compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
-                            )
-                        }
-                        .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
-                    ChartDetailScreen(
-                        chart = selectedChart,
-                        siblingCharts = family,
-                        bjmIndex = bjmIndex,
-                        chartData = chartData,
-                        loading = chartLoading,
-                        playerSettings = if (selectedChart.mode == "DP") dpPlayerSettings else spPlayerSettings,
-                        onBack = onBack,
-                        onRetry = onRetryChart,
-                        mode = browserMode,
-                        onStyleToggle = {
-                            val targetMode = if (browserMode == "SP") "DP" else "SP"
-                            val alternate = songCharts
-                                .filter {
-                                    it.mode == targetMode &&
-                                        it.textageUrl != null
-                                }
-                                .maxWithOrNull(
-                                    compareBy<IidxChart>({ difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
-                                )
-                            browserMode = targetMode
-                            if (alternate != null) onOpenChart(alternate) else onBack()
-                        },
-                        onOpenChart = onOpenChart,
-                        onCopyText = onCopyText,
-                        onPlayerSettingsChange = { settings ->
-                            onPlayerSettingsChange(selectedChart.mode, settings)
-                        },
-                    )
-                } else if (selectedSong != null) {
-                    val selectedSongKey = songGroupKey(selectedSong)
-                    val songCharts = chartsBySongKey[selectedSongKey].orEmpty()
-                    val family = songCharts
-                        .filter {
-                            it.mode == selectedSong.mode
-                        }
-                        .groupBy { it.difficulty }
-                        .values
-                        .mapNotNull { sameDifficulty ->
-                            sameDifficulty.maxWithOrNull(
-                                compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
-                            )
-                        }
-                        .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
-                    SongDetailScreen(
-                        song = selectedSong,
-                        charts = family,
-                        bjmIndex = bjmIndex,
-                        mode = browserMode,
-                        onBack = onBack,
-                        onStyleToggle = {
-                            val targetMode = if (browserMode == "SP") "DP" else "SP"
-                            val alternate = songCharts
-                                .filter {
-                                    it.mode == targetMode
-                                }
-                                .maxWithOrNull(
-                                    compareBy<IidxChart>({ it.textageUrl != null }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
-                                )
-                            if (alternate != null) {
-                                browserMode = targetMode
-                                onOpenSong(alternate)
                             }
-                        },
-                        onOpenChart = onOpenChart,
-                        onCopyText = onCopyText,
-                    )
+                        }
+                    }
                 }
             }
             if (message != null) ToastCard(message, onDismissMessage, Modifier.align(Alignment.BottomCenter))

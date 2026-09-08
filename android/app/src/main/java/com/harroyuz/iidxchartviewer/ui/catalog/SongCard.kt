@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
+import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +68,7 @@ internal fun SongGroupRow(
     val representative = song.charts.firstOrNull()
     Column(
         modifier.fillMaxWidth()
+            .browseSharedBounds(representative?.let { "song-surface:${songGroupKey(it)}" })
             .clip(MaterialTheme.shapes.medium)
             .background(CardSurface)
             .border(1.dp, Outline, MaterialTheme.shapes.medium)
@@ -73,7 +76,7 @@ internal fun SongGroupRow(
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f).padding(end = 10.dp)) {
+            Column(Modifier.weight(1f).browseSharedBounds(representative?.let { "song-info:${songGroupKey(it)}" }).padding(end = 10.dp)) {
                 CopyableText(
                     text = song.genre.ifBlank { "未知曲风" },
                     color = Muted,

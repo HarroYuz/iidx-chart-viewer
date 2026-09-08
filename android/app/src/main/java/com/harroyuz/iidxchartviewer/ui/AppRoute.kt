@@ -27,6 +27,8 @@ internal fun AppRoute(viewModel: AppViewModel) {
             localDataLoading = localDataLoading,
             localDataProgress = localDataProgress,
             localDataStage = localDataStage,
+            visualEffectsDisabled = visualEffectsDisabled,
+            onVisualEffectsDisabledChange = ::changeVisualEffectsDisabled,
             autoUpdateEnabled = autoUpdateEnabled,
             updateChecking = updateChecking,
             updateInfo = updateInfo,
