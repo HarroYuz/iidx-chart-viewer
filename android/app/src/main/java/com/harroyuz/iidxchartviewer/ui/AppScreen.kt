@@ -277,9 +277,9 @@ internal fun IidxApp(
                                             playerSettings = if (selectedChart.mode == "DP") dpPlayerSettings else spPlayerSettings,
                                             onBack = onBack,
                                             onRetry = onRetryChart,
-                                            mode = browserMode,
+                                            mode = selectedChart.mode,
                                             onStyleToggle = {
-                                                val targetMode = if (browserMode == "SP") "DP" else "SP"
+                                                val targetMode = if (selectedChart.mode == "SP") "DP" else "SP"
                                                 val alternate = songCharts
                                                     .filter {
                                                         it.mode == targetMode &&
@@ -288,8 +288,10 @@ internal fun IidxApp(
                                                     .maxWithOrNull(
                                                         compareBy<IidxChart>({ difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
                                                     )
-                                                browserMode = targetMode
-                                                if (alternate != null) onOpenChart(alternate) else onBack()
+                                                if (alternate != null) {
+                                                    browserMode = targetMode
+                                                    onOpenChart(alternate)
+                                                }
                                             },
                                             onOpenChart = onOpenChart,
                                             onCopyText = onCopyText,
@@ -316,10 +318,10 @@ internal fun IidxApp(
                                             song = selectedSong,
                                             charts = family,
                                             bjmIndex = bjmIndex,
-                                            mode = browserMode,
+                                            mode = selectedSong.mode,
                                             onBack = onBack,
                                             onStyleToggle = {
-                                                val targetMode = if (browserMode == "SP") "DP" else "SP"
+                                                val targetMode = if (selectedSong.mode == "SP") "DP" else "SP"
                                                 val alternate = songCharts
                                                     .filter {
                                                         it.mode == targetMode

@@ -89,10 +89,9 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         private set
     internal var chartLoading by mutableStateOf(false)
         private set
-    internal var selectedSong by mutableStateOf<IidxChart?>(null)
-        private set
-    internal var selectedChart by mutableStateOf<IidxChart?>(null)
-        private set
+    private var browseSelection by mutableStateOf(BrowseSelection())
+    internal val selectedSong: IidxChart? get() = browseSelection.song
+    internal val selectedChart: IidxChart? get() = browseSelection.chart
     internal var selectedChartData by mutableStateOf<TextageChartData?>(null)
         private set
     internal var spPlayerSettings by mutableStateOf(PlayerSettings())
@@ -648,7 +647,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     internal fun openChart(chart: IidxChart) {
-        selectedChart = chart
+        browseSelection = browseSelection.openChart(chart)
         selectedChartData = null
         chartLoading = true
 
@@ -720,21 +719,20 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
 
     internal fun openSong(chart: IidxChart, fromBjmHistory: Boolean? = null) {
         fromBjmHistory?.let { returnToBjmHistory = it }
-        selectedSong = chart
-        selectedChart = null
+        browseSelection = BrowseSelection(song = chart)
         selectedChartData = null
         chartLoading = false
     }
 
     private fun closeChart() {
-        selectedChart = null
+        if (selectedChart != null) browseSelection = browseSelection.back()
         selectedChartData = null
         chartLoading = false
     }
 
     private fun closeSong() {
         closeChart()
-        selectedSong = null
+        browseSelection = browseSelection.back()
         if (returnToBjmHistory) {
             returnToBjmHistory = false
             destination = AppDestination.HISTORY
