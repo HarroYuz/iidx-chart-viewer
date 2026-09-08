@@ -14,6 +14,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,7 +59,7 @@ internal fun AppTopBar(
 
 @Composable
 internal fun PlayStyleButton(mode: String, onToggle: () -> Unit) {
-    OutlinedButton(onClick = onToggle, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 44.dp)) {
+    OutlinedButton(onClick = onToggle, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 44.dp).browseSharedBounds("play-style", stable = true)) {
         Text(mode, color = Purple)
     }
 }

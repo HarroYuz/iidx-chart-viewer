@@ -18,6 +18,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
+import com.harroyuz.iidxchartviewer.ui.motion.browseSongSurface
+import com.harroyuz.iidxchartviewer.ui.motion.browseReveal
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,7 +70,7 @@ internal fun ChartDetailScreen(
     onCopyText: (String) -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().browseSharedBounds("song-surface:${songGroupKey(chart)}").background(Background)) {
+    Column(Modifier.fillMaxSize().browseSongSurface("song-surface:${songGroupKey(chart)}").background(Background)) {
         AppTopBar(title = "谱面浏览", onNavigate = onBack) {
             PlayStyleButton(mode, onStyleToggle)
         }
@@ -76,7 +78,7 @@ internal fun ChartDetailScreen(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}").padding(end = 12.dp)) {
+            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}", stableInDetails = true).padding(end = 12.dp)) {
                 AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
                 Spacer(Modifier.height(3.dp))
                 AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
@@ -87,9 +89,9 @@ internal fun ChartDetailScreen(
                 AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(chart.composer) })
             }
             Column(horizontalAlignment = Alignment.End) {
-                DetailStat("版本 ", chart.version.ifBlank { "—" })
-                DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" })
-                DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—")
+                DetailStat("版本 ", chart.version.ifBlank { "—" }, Modifier.browseSharedBounds("version:${songGroupKey(chart)}", stableInDetails = true))
+                DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(chart)}", stableInDetails = true))
+                DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—", Modifier.browseReveal())
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
@@ -108,7 +110,7 @@ internal fun ChartDetailScreen(
                         verticalAlignment = Alignment.Bottom,
                     ) {
                         siblingCharts.forEach { sibling ->
-                            DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id)
+                            DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id, sharedDifficulty = true)
                         }
                     }
                 }
@@ -116,12 +118,13 @@ internal fun ChartDetailScreen(
                 ChartScoreSummary(
                     score = scoreForChart(chart, bjmIndex),
                     noteCount = chartData?.chart?.notes ?: chart.notes,
+                    modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
                 )
             }
         }
         Spacer(Modifier.height(16.dp))
 
-        Box(Modifier.fillMaxWidth().weight(1f).browseSharedBounds("chart-surface:${chart.id}").background(Background)) {
+        Box(Modifier.fillMaxWidth().weight(1f).browseReveal(fromBottom = true).background(Background)) {
             when {
                 loading -> Box(Modifier.fillMaxWidth().height(520.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

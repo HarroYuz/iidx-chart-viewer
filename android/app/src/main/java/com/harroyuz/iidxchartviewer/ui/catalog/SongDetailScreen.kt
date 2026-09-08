@@ -12,43 +12,35 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
+import com.harroyuz.iidxchartviewer.ui.motion.browseSongSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.harroyuz.iidxchartviewer.domain.model.BjmIndex
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
-import com.harroyuz.iidxchartviewer.domain.score.scoreRankName
+import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
 import com.harroyuz.iidxchartviewer.ui.components.AutoScrollingText
 import com.harroyuz.iidxchartviewer.ui.components.DetailStat
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
-import com.harroyuz.iidxchartviewer.ui.components.StrokedText
-import com.harroyuz.iidxchartviewer.ui.components.clearFlagColor
-import com.harroyuz.iidxchartviewer.ui.components.clearFlagDetailName
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
-import com.harroyuz.iidxchartviewer.ui.components.rankDeltaColor
-import com.harroyuz.iidxchartviewer.ui.components.rankDeltaText
 import com.harroyuz.iidxchartviewer.ui.components.scoreForChart
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 import com.harroyuz.iidxchartviewer.ui.theme.CardSurface
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
 import com.harroyuz.iidxchartviewer.ui.theme.Muted
-import com.harroyuz.iidxchartviewer.ui.theme.NormalBlue
 
 @Composable
 internal fun SongDetailScreen(
@@ -61,7 +53,7 @@ internal fun SongDetailScreen(
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().browseSharedBounds("song-surface:${songGroupKey(song)}").background(Background)) {
+    Column(Modifier.fillMaxSize().browseSongSurface("song-surface:${songGroupKey(song)}").background(Background)) {
         AppTopBar(title = "曲目信息", onNavigate = onBack) {
             PlayStyleButton(mode, onStyleToggle)
         }
@@ -69,7 +61,7 @@ internal fun SongDetailScreen(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}").padding(end = 12.dp)) {
+            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}", stableInDetails = true).padding(end = 12.dp)) {
                 AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
                 Spacer(Modifier.height(3.dp))
                 AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
@@ -80,8 +72,8 @@ internal fun SongDetailScreen(
                 AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(song.composer) })
             }
             Column(horizontalAlignment = Alignment.End) {
-                DetailStat("版本 ", song.version.ifBlank { "—" })
-                DetailStat("BPM ", song.bpm.ifBlank { "—" })
+                DetailStat("版本 ", song.version.ifBlank { "—" }, Modifier.browseSharedBounds("version:${songGroupKey(song)}", stableInDetails = true))
+                DetailStat("BPM ", song.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(song)}", stableInDetails = true))
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -111,46 +103,25 @@ private fun DifficultyScoreCard(
     val accent = difficultyColor(chart.difficulty)
     val shape = MaterialTheme.shapes.medium
     val available = chart.textageUrl != null
-    Column(
+    Row(
         Modifier.fillMaxWidth()
-            .browseSharedBounds("chart-surface:${chart.id}")
+            .browseSharedBounds("difficulty:${chart.id}")
             .clip(shape)
             .background(if (available) CardSurface else Background)
             .border(1.dp, accent.copy(alpha = if (available) .35f else .15f), shape)
             .clickable(enabled = available) { onOpenChart(chart) }
             .heightIn(min = 72.dp)
             .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
             Text(
                 "${difficultyName(chart.difficulty)} ${chart.level}",
                 color = accent,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(Modifier.weight(1f))
-            if (score == null) {
-                Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StrokedText(
-                        text = clearFlagDetailName(score.clearFlag),
-                        fillColor = clearFlagColor(score.clearFlag),
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    score.missCount.takeIf { it >= 0 }?.let {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(" (", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                            Text(it.toString(), color = NormalBlue, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                            Text(" BP)", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(1.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(1.dp))
             Text(
                 "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
                 color = Muted,
@@ -158,26 +129,11 @@ private fun DifficultyScoreCard(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 4.dp),
             )
-            Spacer(Modifier.weight(1f))
-            if (score != null) {
-                Text(score.exScore.toString(), color = NormalBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(4.dp))
-                Text("(", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                StrokedText(
-                    text = scoreRankName(score.exScore, chart.notes),
-                    fillColor = ComposeColor.White,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    strokeWidth = 1.3f,
-                )
-                rankDeltaText(score.exScore, chart.notes)
-                    .takeIf { it.isNotBlank() }
-                    ?.let {
-                        Spacer(Modifier.width(3.dp))
-                        Text(it, color = rankDeltaColor(it), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                    }
-                Text(")", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-            }
         }
+        ChartScoreSummary(
+            score = score,
+            noteCount = chart.notes,
+            modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
+        )
     }
 }

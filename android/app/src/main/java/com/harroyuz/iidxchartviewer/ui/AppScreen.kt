@@ -6,6 +6,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -24,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -150,22 +152,23 @@ internal fun IidxApp(
                 val showingDetail = selectedSong != null || selectedChart != null
                 val currentPage = BrowsePage(selectedSong, selectedChart, chartData, chartLoading)
                 BackHandler(showingDetail, onBack = onBack)
-                SharedTransitionLayout {
-                    AnimatedContent(
-                        targetState = currentPage,
+                SharedTransitionLayout(Modifier.fillMaxSize().clipToBounds()) {
+                    val pageTransition = updateTransition(currentPage, label = "browse")
+                    val betweenDetails = pageTransition.currentState.key != "browser" &&
+                        pageTransition.targetState.key != "browser"
+                    pageTransition.AnimatedContent(
                         contentKey = { it.key },
                         modifier = Modifier.fillMaxSize(),
                         transitionSpec = {
-                            if (visualEffectsDisabled) {
+                            if (visualEffectsDisabled || (initialState.key != "browser" && targetState.key != "browser")) {
                                 EnterTransition.None togetherWith ExitTransition.None
                             } else {
-                                fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(180))
+                                fadeIn(tween(147, delayMillis = 60)) togetherWith fadeOut(tween(120))
                             }.using(null)
                         },
-                        label = "browse-page",
                     ) { page ->
                         CompositionLocalProvider(
-                            LocalBrowseMotion provides if (visualEffectsDisabled) null else BrowseMotion(this@SharedTransitionLayout, this),
+                            LocalBrowseMotion provides if (visualEffectsDisabled) null else BrowseMotion(this@SharedTransitionLayout, this, betweenDetails),
                         ) {
                             pageState.SaveableStateProvider(page.key) {
                                 Box(Modifier.fillMaxSize().then(

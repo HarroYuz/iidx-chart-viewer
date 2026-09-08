@@ -100,7 +100,7 @@ internal fun SongGroupRow(
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(song.version.ifBlank { "—" }, color = NormalBlue, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.version.ifBlank { "—" }, modifier = Modifier.browseSharedBounds(representative?.let { "version:${songGroupKey(it)}" }), color = NormalBlue, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     buildAnnotatedString {
                         withStyle(SpanStyle(color = Muted)) { append("BPM ") }
@@ -108,6 +108,7 @@ internal fun SongGroupRow(
                             append(song.charts.firstOrNull()?.bpm?.ifBlank { "—" } ?: "—")
                         }
                     },
+                    modifier = Modifier.browseSharedBounds(representative?.let { "bpm:${songGroupKey(it)}" }),
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -135,13 +136,15 @@ internal fun DifficultyChip(
     chart: IidxChart,
     onOpenChart: (IidxChart) -> Unit,
     selected: Boolean = false,
+    sharedDifficulty: Boolean = false,
     score: BjmScore? = null,
 ) {
     val accent = difficultyColor(chart.difficulty)
     val shape = RoundedCornerShape(14.dp)
     val available = chart.textageUrl != null
     Box(
-        modifier = Modifier.size(width = 42.dp, height = 34.dp),
+        modifier = Modifier.size(width = 42.dp, height = 34.dp)
+            .browseSharedBounds(if (sharedDifficulty) "difficulty:${chart.id}" else null),
     ) {
         Box(
             Modifier.fillMaxSize()

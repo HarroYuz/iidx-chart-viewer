@@ -173,12 +173,13 @@ internal fun AutoScrollingText(
 }
 
 @Composable
-internal fun DetailStat(label: String, value: String) {
+internal fun DetailStat(label: String, value: String, modifier: Modifier = Modifier) {
     Text(
         buildAnnotatedString {
             withStyle(SpanStyle(color = Muted)) { append(label) }
             withStyle(SpanStyle(color = NormalBlue)) { append(value) }
         },
+        modifier = modifier,
         fontSize = 10.sp,
         maxLines = 1,
         softWrap = false,

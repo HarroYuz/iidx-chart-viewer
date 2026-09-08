@@ -7,32 +7,76 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 
-/** One owner for both levels, so nested surfaces and metadata follow the same clock. */
+internal const val BROWSE_DURATION_MS = 240
+
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal data class BrowseMotion(
     val shared: SharedTransitionScope,
     val visibility: AnimatedVisibilityScope,
+    val betweenDetails: Boolean,
 )
 
 internal val LocalBrowseMotion = staticCompositionLocalOf<BrowseMotion?> { null }
 
+/** Identical content uses a single overlay instead of two overlapping fades. */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-internal fun Modifier.browseSharedBounds(key: String?): Modifier {
+internal fun Modifier.browseSharedBounds(
+    key: String?,
+    stable: Boolean = false,
+    stableInDetails: Boolean = false,
+): Modifier {
     val motion = LocalBrowseMotion.current ?: return this
     if (key == null) return this
     return with(motion.shared) {
-        sharedBounds(
-            sharedContentState = rememberSharedContentState(key),
-            animatedVisibilityScope = motion.visibility,
-            boundsTransform = { _, _ -> tween(360, easing = FastOutSlowInEasing) },
-            enter = fadeIn(tween(220, delayMillis = 90)),
-            exit = fadeOut(tween(180)),
-            resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(),
+        val state = rememberSharedContentState(key)
+        if (stable || (stableInDetails && motion.betweenDetails)) {
+            sharedElement(
+                sharedContentState = state,
+                animatedVisibilityScope = motion.visibility,
+                boundsTransform = { _, _ -> tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
+                zIndexInOverlay = 2f,
+            )
+        } else {
+            sharedBounds(
+                sharedContentState = state,
+                animatedVisibilityScope = motion.visibility,
+                boundsTransform = { _, _ -> tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
+                enter = fadeIn(tween(147, delayMillis = 60)),
+                exit = fadeOut(tween(120)),
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun Modifier.browseSongSurface(key: String): Modifier =
+    if (LocalBrowseMotion.current?.betweenDetails == true) this else browseSharedBounds(key)
+
+/** Only new player content moves; the header stays outside this animation. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+internal fun Modifier.browseReveal(fromBottom: Boolean = false): Modifier {
+    val motion = LocalBrowseMotion.current ?: return this
+    val layer = if (fromBottom) {
+        with(motion.shared) { renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f) }
+    } else this
+    return with(motion.visibility) {
+        layer.animateEnterExit(
+            enter = if (fromBottom) {
+                slideInVertically(tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing)) { it }
+            } else fadeIn(tween(147, delayMillis = 60)),
+            exit = if (fromBottom) {
+                slideOutVertically(tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing)) { it }
+            } else fadeOut(tween(120)),
+            label = if (fromBottom) "player-reveal" else "notes-reveal",
         )
     }
 }
