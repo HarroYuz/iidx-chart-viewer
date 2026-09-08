@@ -34,6 +34,7 @@ data class PlayerSettings(
     val showBpmChanges: Boolean = true,
     val showMeasureNumbers: Boolean = true,
     val side: String = "1P",
+    val flip: Boolean = false,
     val playOption: String = "NONE",
     val playOption1P: String = "NONE",
     val playOption2P: String = "NONE",

@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlayerSettingsTest {
+    @Test fun flipSwapsBothSidesIncludingScratchesBeforeSideOptions() {
+        for (lane in 0..15) {
+            assertEquals(lane, dpOptionSourceLane(lane, false))
+            assertEquals(lane, dpOptionSourceLane(dpOptionSourceLane(lane, true), true))
+        }
+        assertEquals(8, dpOptionSourceLane(0, true))
+        assertEquals(0, dpOptionSourceLane(8, true))
+        assertEquals(9, dpOptionSourceLane(1, true))
+        assertEquals(15, dpDisplayLane(dpOptionSourceLane(0, true), 0))
+    }
+
     @Test
     fun floatingHiSpeedUsesGreenNumberTravelTimeAtStartingBpm() {
         val greenNumber = 300

@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.harroyuz.iidxchartviewer.domain.model.TextageChartData
+import com.harroyuz.iidxchartviewer.domain.player.dpOptionSourceLane
 import com.harroyuz.iidxchartviewer.domain.player.dpDisplayLane
 import com.harroyuz.iidxchartviewer.domain.player.playerPixelsPerBeat
 import com.harroyuz.iidxchartviewer.ui.theme.PlayerBackground
@@ -51,6 +52,7 @@ internal fun ChartCanvas(
     showBpmChanges: Boolean,
     showMeasureNumbers: Boolean,
     side: String,
+    flip: Boolean,
     playOption: String,
     playOption1P: String,
     playOption2P: String,
@@ -276,7 +278,8 @@ internal fun ChartCanvas(
             // changes only the position; note color must remain tied to the
             // original chart lane (especially scratch vs. key colors).
             val sourceLane = note.lane
-            val rawLane = if (isSp) sourceLane.mod(8) else sourceLane.coerceIn(0, laneCount - 1)
+            // FLIP swaps both complete sides before applying the destination side options.
+            val rawLane = if (isSp) sourceLane.mod(8) else dpOptionSourceLane(sourceLane.coerceIn(0, laneCount - 1), flip)
             val laneOption = if (isSp) playOption else if (rawLane >= 8) playOption2P else playOption1P
             fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (laneOption) {
                 "MIRROR" -> 8 - lane

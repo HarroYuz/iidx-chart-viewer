@@ -203,6 +203,7 @@ internal fun ChartPlayer(
                     showBpmChanges = settings.showBpmChanges,
                     showMeasureNumbers = settings.showMeasureNumbers,
                     side = settings.side,
+                    flip = settings.flip,
                     playOption = settings.safePlayOption,
                     playOption1P = settings.safePlayOption1P,
                     playOption2P = settings.safePlayOption2P,

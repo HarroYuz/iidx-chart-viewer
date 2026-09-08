@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.harroyuz.iidxchartviewer.BuildConfig
 import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmClient
+import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmSessionManager
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
 import com.harroyuz.iidxchartviewer.ui.theme.IidxTheme
 import com.harroyuz.iidxchartviewer.ui.theme.configureSystemBars
@@ -26,6 +27,8 @@ import java.util.concurrent.Executors
 
 class BjmLoginActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var bjmClient: BjmClient
+    private lateinit var sessionManager: BjmSessionManager
     private val handler = Handler(Looper.getMainLooper())
     private val probeExecutor = Executors.newSingleThreadExecutor()
     private var loginCompleted = false
@@ -42,7 +45,7 @@ class BjmLoginActivity : ComponentActivity() {
             val currentPoll = this
             probeExecutor.execute {
                 val authenticated = runCatching {
-                    if (!hasWebViewCookies()) null else BjmClient().probeAuthMe()
+                    if (!hasWebViewCookies()) null else bjmClient.probeAuthMe().user
                 }.getOrNull() != null
                 runOnUiThread {
                     probeInFlight = false
@@ -65,6 +68,8 @@ class BjmLoginActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         configureSystemBars()
         title = "登录 BJMANIA"
+        bjmClient = BjmClient(this)
+        sessionManager = BjmSessionManager.getInstance(this)
 
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
@@ -77,10 +82,12 @@ class BjmLoginActivity : ComponentActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.userAgentString = settings.userAgentString + " IIDXChartViewer/${BuildConfig.VERSION_NAME}"
+            sessionManager.setUserAgent(settings.userAgentString)
             cookies.setAcceptThirdPartyCookies(this, true)
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
+                    sessionManager.setReferer(url)
                     handler.removeCallbacks(authPoll)
                     handler.post(authPoll)
                 }
@@ -97,7 +104,13 @@ class BjmLoginActivity : ComponentActivity() {
                 }
             }
         }
-        webView.loadUrl("https://u.bjmania.com/login")
+        probeExecutor.execute {
+            val restored = runCatching { bjmClient.probeAuthMe().user != null }.getOrDefault(false)
+            runOnUiThread {
+                if (destroyed || loginCompleted) return@runOnUiThread
+                if (restored) completeLogin() else webView.loadUrl("https://u.bjmania.com/login")
+            }
+        }
     }
 
     private fun hasWebViewCookies(): Boolean {
@@ -119,6 +132,7 @@ class BjmLoginActivity : ComponentActivity() {
         loginCompleted = true
         handler.removeCallbacks(authPoll)
         CookieManager.getInstance().flush()
+        // API calls rehydrate from this persistent CookieManager on their worker thread.
         setResult(RESULT_OK)
         finish()
     }

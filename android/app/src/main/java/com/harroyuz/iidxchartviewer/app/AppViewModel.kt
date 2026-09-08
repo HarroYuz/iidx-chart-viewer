@@ -49,7 +49,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     val events = eventsChannel.receiveAsFlow()
 
     private val store = IidxLocalStore(application)
-    private val bjmClient = BjmClient()
+    private val bjmClient = BjmClient(application)
     private val textageClient = TextageClient()
     private val githubUpdateClient = GithubUpdateClient()
 
@@ -140,26 +140,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                 }
                 val loadedFromDisk = store.load()
                 val loadedBjmHistory = store.loadBjmHistory()
-                val authenticatedState = if (loadedFromDisk.bjmUser != null) {
-                    val currentUser = runCatching {
-                        bjmClient.probeAuthMe()
-                    }.getOrNull()
-                    if (currentUser == null) {
-                        val loggedOut = loadedFromDisk.copy(bjmUser = null)
-                        withContext(Dispatchers.Main) {
-                            bjmClient.clearSession()
-                        }
-                        withContext(Dispatchers.IO) { store.save(loggedOut) }
-                        withContext(Dispatchers.Main) {
-                            message = "BJM 登录已失效，请重新登录"
-                        }
-                        loggedOut
-                    } else {
-                        loadedFromDisk.copy(bjmUser = currentUser)
-                    }
-                } else {
-                    loadedFromDisk
-                }
+                // Startup is entirely local: a failed network check must never erase a session.
+                val authenticatedState = loadedFromDisk
                 withContext(Dispatchers.Main) {
                     appState = authenticatedState
                     bjmHistory = loadedBjmHistory
@@ -577,14 +559,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private suspend fun syncBjmScoresData(): Int {
-        val result = try {
-            bjmClient.fetchScores()
-        } catch (error: BjmException) {
-            if (error.message?.contains("登录态不可用") == true) {
-                clearBjmSession("BJM 登录已失效，请重新登录")
-            }
-            throw error
-        }
+        // Authentication and network failures leave persisted user data and credentials intact.
+        val result = bjmClient.fetchScores()
         val mergedHistory = withContext(Dispatchers.IO) {
             val previousHistory = store.loadBjmHistory()
             appendBjmHistory(previousHistory, result.scores).also(store::saveBjmHistory)

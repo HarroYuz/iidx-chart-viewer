@@ -87,6 +87,7 @@ internal fun PlayerConfigBox(
             if (options.any { it != "NON" }) append(", ${options.joinToString("/")}")
         }
         if (settings.keepSpeedAcrossBpm) append(", Fixed-Speed")
+        if (!isSp && settings.flip) append(", FLIP")
     }
     var speedInput by remember(settings.safeSpeed, settings.safeSpeedMode, settings.safeGreenNumber) {
         mutableStateOf(activeSpeedValue.toString())
@@ -197,6 +198,14 @@ internal fun PlayerConfigBox(
             ) {
                 PlayerSwitchSetting("流速不随BPM变化", settings.keepSpeedAcrossBpm) {
                     onSettingsChange(settings.copy(keepSpeedAcrossBpm = it))
+                }
+            }
+            if (!isSp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlayerSwitchSetting("FLIP", settings.flip) { onSettingsChange(settings.copy(flip = it)) }
                 }
             }
             if (isSp) {
