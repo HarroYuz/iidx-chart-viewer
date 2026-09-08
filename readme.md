@@ -1,6 +1,6 @@
 # IIDX 谱面浏览器
 
-当前版本：0.7.5
+当前版本：1.0.0
 
 一个纯 Android 的 beatmania IIDX 谱面浏览与本地播放器应用，使用 Kotlin 和 Jetpack Compose 实现。
 
@@ -15,10 +15,38 @@
 - 首页菜单提供谱面数据更新、GitHub Release 更新检查和项目主页入口。
 - 设置中可以关闭每天自动检查更新；发现新版本后可在应用内下载 APK 并发起安装。
 
+## 项目结构
+
+这是原生 Android 项目，早期 Web 原型已移除，不再需要 Node.js 或 npm。
+
+```text
+android/app/src/main/
+├── java/com/harroyuz/iidxchartviewer/
+│   ├── MainActivity.kt       # Activity 入口与系统事件
+│   ├── app/                  # ViewModel 状态、异步任务与事件
+│   ├── data/
+│   │   ├── local/            # 本地存储、缓存和 JSON 编解码
+│   │   └── remote/           # Textage、BJM、GitHub 客户端与解析器
+│   ├── domain/               # 数据模型、曲目匹配、成绩、同步与播放器规则
+│   └── ui/
+│       ├── auth/             # BJM 登录
+│       ├── catalog/          # 曲库与曲目详情
+│       ├── history/          # 成绩历史和日历
+│       ├── player/           # 播放、Canvas 绘制和设置
+│       ├── settings/         # 数据同步与版本更新
+│       ├── components/       # 通用界面组件
+│       └── theme/            # 颜色、字体与形状
+└── res/                      # Android 资源
+```
+
+业务规则不依赖 Android 界面。界面通过回调请求 ViewModel 修改状态；登录、安装和退出等系统操作由 Activity 处理。重构保留了 applicationId、存储键和缓存格式，可沿用已有数据。
+
 ## 构建
 
+需要 JDK 17 或更新版本、Android SDK 36；在 `android/local.properties` 中配置本机 `sdk.dir`。也可直接用 Android Studio 打开 `android/` 目录。
+
 ```bash
-./gradlew -p android :app:testDebugUnitTest :app:assembleDebug
+./gradlew -p android :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
 Debug APK 输出在：

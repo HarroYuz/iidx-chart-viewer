@@ -1,7 +1,3 @@
-# Node/Vite dependencies and local build output
-node_modules/
-dist/
-
 # Android/Gradle local state and generated artifacts
 android/.gradle/
 android/**/build/
