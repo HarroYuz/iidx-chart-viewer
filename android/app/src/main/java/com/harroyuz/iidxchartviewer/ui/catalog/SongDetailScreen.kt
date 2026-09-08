@@ -138,7 +138,6 @@ private fun DifficultyScoreCard(
                     fontSize = 14.sp,
                     lineHeight = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp),
                 )
                 if (scoreDate != null) {
                     Text(
