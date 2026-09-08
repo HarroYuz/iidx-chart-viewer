@@ -21,6 +21,9 @@ import androidx.compose.material3.Text
 import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
 import com.harroyuz.iidxchartviewer.ui.motion.browseSongSurface
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.style.TextOverflow
+import com.harroyuz.iidxchartviewer.ui.history.formatBjmHistoryTime
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,6 +105,7 @@ private fun DifficultyScoreCard(
     score: BjmScore?,
     onOpenChart: (IidxChart) -> Unit,
 ) {
+    val scoreDate = remember(score?.time) { score?.let { formatBjmHistoryTime(it.time) } }
     val accent = difficultyColor(chart.difficulty)
     val shape = MaterialTheme.shapes.medium
     val available = chart.textageUrl != null
@@ -110,7 +114,7 @@ private fun DifficultyScoreCard(
             .browseSharedBounds("difficulty:${chart.id}", overlayZ = 1f)
             .heightIn(min = 72.dp),
     ) {
-        DifficultyBackground(chart, modifier = Modifier.matchParentSize())
+        DifficultyBackground(chart, modifier = Modifier.matchParentSize(), detail = true)
         Row(
             Modifier.fillMaxWidth()
                 .clip(shape)
@@ -124,6 +128,7 @@ private fun DifficultyScoreCard(
                     "${difficultyName(chart.difficulty)} ${chart.level}",
                     color = accent,
                     fontSize = 13.sp,
+                    lineHeight = 16.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(1.dp))
@@ -131,9 +136,20 @@ private fun DifficultyScoreCard(
                     "${chart.notes.takeIf { it > 0 } ?: "—"} NOTES",
                     color = Muted,
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 4.dp),
                 )
+                if (scoreDate != null) {
+                    Text(
+                        scoreDate,
+                        color = Muted,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             ChartScoreSummary(
                 score = score,

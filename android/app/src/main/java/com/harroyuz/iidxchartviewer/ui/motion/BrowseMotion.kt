@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.motion
 
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.Transition
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -18,9 +20,8 @@ internal const val BROWSE_DURATION_MS = 240
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal data class BrowseMotion(
     val shared: SharedTransitionScope,
-    val visibility: AnimatedVisibilityScope?,
+    val visibility: AnimatedVisibilityScope,
     val betweenDetails: Boolean,
-    val callerVisible: Boolean = true,
     val movingSongKey: String? = null,
 )
 
@@ -39,14 +40,7 @@ internal fun Modifier.browseSharedBounds(
     if (key == null) return this
     return with(motion.shared) {
         val state = rememberSharedContentState(key)
-        if (motion.visibility == null) {
-            sharedElementWithCallerManagedVisibility(
-                sharedContentState = state,
-                visible = motion.callerVisible,
-                boundsTransform = { _, _ -> tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
-                zIndexInOverlay = overlayZ ?: if (stable) 2f else 0f,
-            )
-        } else if (stable || (stableInDetails && motion.betweenDetails)) {
+        if (stable || (stableInDetails && motion.betweenDetails)) {
             sharedElement(
                 sharedContentState = state,
                 animatedVisibilityScope = motion.visibility,
@@ -76,7 +70,7 @@ internal fun Modifier.browseSongSurface(key: String): Modifier =
 @Composable
 internal fun Modifier.browseReveal(fromBottom: Boolean = false): Modifier {
     val motion = LocalBrowseMotion.current ?: return this
-    val visibility = motion.visibility ?: return this
+    val visibility = motion.visibility
     val layer = if (fromBottom) {
         with(motion.shared) { renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f) }
     } else this
@@ -100,3 +94,8 @@ internal fun Modifier.keepSharedSize(): Modifier {
     val motion = LocalBrowseMotion.current ?: return this
     return with(motion.shared) { skipToLookaheadSize() }
 }
+
+/** Connect a retained page to the same visibility clock as the transient detail pages. */
+internal class RetainedVisibilityScope(
+    override val transition: Transition<EnterExitState>,
+) : AnimatedVisibilityScope

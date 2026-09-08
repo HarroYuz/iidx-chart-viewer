@@ -7,6 +7,11 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import com.harroyuz.iidxchartviewer.ui.components.RetainedPage
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.createChildTransition
+import androidx.compose.animation.core.ExperimentalTransitionApi
+import androidx.compose.ui.graphics.graphicsLayer
+import com.harroyuz.iidxchartviewer.ui.motion.RetainedVisibilityScope
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -64,7 +69,7 @@ private data class BrowsePage(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class, ExperimentalTransitionApi::class)
 @Composable
 internal fun IidxApp(
     state: IidxAppState,
@@ -159,15 +164,22 @@ internal fun IidxApp(
                         pageTransition.targetState.key != "browser"
                     val browserParticipating = pageTransition.currentState.key == "browser" ||
                         pageTransition.targetState.key == "browser"
+                    val browserVisibility = pageTransition.createChildTransition(label = "retained-browser") {
+                        if (it.key == "browser") EnterExitState.Visible else EnterExitState.PostExit
+                    }
+                    val browserScope = remember(browserVisibility) { RetainedVisibilityScope(browserVisibility) }
+                    val browserAtRest = pageTransition.currentState.key == "browser" &&
+                        pageTransition.targetState.key == "browser"
                     val movingSongKey = (pageTransition.targetState.chart ?: pageTransition.targetState.song
                         ?: pageTransition.currentState.chart ?: pageTransition.currentState.song)?.let(::songGroupKey)
                     CompositionLocalProvider(
                         LocalBrowseMotion provides if (visualEffectsDisabled || !browserParticipating) null
-                        else BrowseMotion(this, null, false, callerVisible = !showingDetail, movingSongKey = movingSongKey),
+                        else BrowseMotion(this, browserScope, false, movingSongKey = movingSongKey),
                     ) {
                         RetainedPage(
                             visible = browserParticipating,
-                            interactive = !showingDetail,
+                            interactive = browserAtRest,
+                            modifier = Modifier.graphicsLayer { alpha = if (browserAtRest) 1f else 0f },
                         ) {
                             ChartBrowserScreen(
                                 state = state,
