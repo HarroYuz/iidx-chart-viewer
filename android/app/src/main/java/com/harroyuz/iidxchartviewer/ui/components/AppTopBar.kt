@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.components
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
+import com.harroyuz.iidxchartviewer.ui.motion.keepSharedSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,7 +62,13 @@ internal fun AppTopBar(
 
 @Composable
 internal fun PlayStyleButton(mode: String, onToggle: () -> Unit) {
-    OutlinedButton(onClick = onToggle, contentPadding = PaddingValues(horizontal = 16.dp), modifier = Modifier.heightIn(min = 44.dp).browseSharedBounds("play-style", stable = true)) {
-        Text(mode, color = Purple)
+    Box(Modifier.browseSharedBounds("play-style", stable = true).keepSharedSize().size(width = 72.dp, height = 48.dp)) {
+        OutlinedButton(
+            onClick = onToggle,
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Text(mode, color = Purple)
+        }
     }
 }

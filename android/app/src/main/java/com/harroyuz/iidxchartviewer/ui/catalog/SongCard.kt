@@ -124,6 +124,7 @@ internal fun SongGroupRow(
                 DifficultyChip(
                     chart = chart,
                     onOpenChart = onOpenChart,
+                    sharedDifficulty = true,
                     score = scoreForChart(chart, bjmIndex),
                 )
             }

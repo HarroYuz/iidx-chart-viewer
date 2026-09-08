@@ -6,6 +6,9 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import com.harroyuz.iidxchartviewer.ui.components.RetainedPage
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -156,6 +159,68 @@ internal fun IidxApp(
                     val pageTransition = updateTransition(currentPage, label = "browse")
                     val betweenDetails = pageTransition.currentState.key != "browser" &&
                         pageTransition.targetState.key != "browser"
+                    val browserParticipating = pageTransition.currentState.key == "browser" ||
+                        pageTransition.targetState.key == "browser"
+                    val browserAlpha by animateFloatAsState(
+                        targetValue = if (showingDetail) 0f else 1f,
+                        animationSpec = tween(if (visualEffectsDisabled) 0 else 120),
+                        label = "browser-visibility",
+                    )
+                    CompositionLocalProvider(
+                        LocalBrowseMotion provides if (visualEffectsDisabled || !browserParticipating) null
+                        else BrowseMotion(this, null, false, callerVisible = !showingDetail),
+                    ) {
+                        RetainedPage(
+                            visible = browserParticipating,
+                            interactive = !showingDetail,
+                            modifier = Modifier.graphicsLayer { alpha = browserAlpha },
+                        ) {
+                            ChartBrowserScreen(
+                                state = state,
+                                bjmHistory = bjmHistory,
+                                bjmIndex = bjmIndex,
+                                mode = browserMode,
+                                onModeChange = { browserMode = it },
+                                textageSyncing = textageSyncing,
+                                textageProgress = textageProgress,
+                                textageError = textageError,
+                                textageLastSyncAt = textageLastSyncAt,
+                                bjmMusicLastSyncAt = bjmMusicLastSyncAt,
+                                bjmScoresLastSyncAt = bjmScoresLastSyncAt,
+                                onLogin = onLogin,
+                                onLogoutBjm = onLogoutBjm,
+                                onOpenBjmData = onOpenBjmData,
+                                onRefreshTextage = onRefreshTextage,
+                                onFullDataSync = onFullDataSync,
+                                onSyncTextage = onSyncTextage,
+                                onSyncBjmMusic = onSyncBjmMusic,
+                                onSyncBjmScores = onSyncBjmScores,
+                                onOpenGithub = onOpenGithub,
+                                onCheckForUpdates = onCheckForUpdates,
+                                updateChecking = updateChecking,
+                                syncTarget = syncTarget,
+                                syncStage = syncStage,
+                                syncProgress = syncProgress,
+                                settingsPageVisible = settingsPageVisible,
+                                onOpenSettings = onOpenSettings,
+                                onDismissSettings = onDismissSettings,
+                                bjmDataPageVisible = bjmDataPageVisible,
+                                onDismissBjmData = onDismissBjmData,
+                                onOpenSongFromBjmHistory = onOpenSongFromBjmHistory,
+                                visualEffectsDisabled = visualEffectsDisabled,
+                                onVisualEffectsDisabledChange = onVisualEffectsDisabledChange,
+                                autoUpdateEnabled = autoUpdateEnabled,
+                                onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
+                                onClearChartCache = onClearChartCache,
+                                onOpenChart = onOpenChart,
+                                onOpenSong = onOpenSong,
+                                onCopyText = onCopyText,
+                                showingDetail = showingDetail,
+                                onBack = onBack,
+                                onRequestExit = onRequestExit,
+                            )
+                        }
+                    }
                     pageTransition.AnimatedContent(
                         contentKey = { it.key },
                         modifier = Modifier.fillMaxSize(),
@@ -182,52 +247,6 @@ internal fun IidxApp(
                                 )) {
                                     val selectedSong = page.song
                                     val selectedChart = page.chart
-                                    if (page.key == "browser") {
-                                        ChartBrowserScreen(
-                                            state = state,
-                                            bjmHistory = bjmHistory,
-                                            bjmIndex = bjmIndex,
-                                            mode = browserMode,
-                                            onModeChange = { browserMode = it },
-                                            textageSyncing = textageSyncing,
-                                            textageProgress = textageProgress,
-                                            textageError = textageError,
-                                            textageLastSyncAt = textageLastSyncAt,
-                                            bjmMusicLastSyncAt = bjmMusicLastSyncAt,
-                                            bjmScoresLastSyncAt = bjmScoresLastSyncAt,
-                                            onLogin = onLogin,
-                                            onLogoutBjm = onLogoutBjm,
-                                            onOpenBjmData = onOpenBjmData,
-                                            onRefreshTextage = onRefreshTextage,
-                                            onFullDataSync = onFullDataSync,
-                                            onSyncTextage = onSyncTextage,
-                                            onSyncBjmMusic = onSyncBjmMusic,
-                                            onSyncBjmScores = onSyncBjmScores,
-                                            onOpenGithub = onOpenGithub,
-                                            onCheckForUpdates = onCheckForUpdates,
-                                            updateChecking = updateChecking,
-                                            syncTarget = syncTarget,
-                                            syncStage = syncStage,
-                                            syncProgress = syncProgress,
-                                            settingsPageVisible = settingsPageVisible,
-                                            onOpenSettings = onOpenSettings,
-                                            onDismissSettings = onDismissSettings,
-                                            bjmDataPageVisible = bjmDataPageVisible,
-                                            onDismissBjmData = onDismissBjmData,
-                                            onOpenSongFromBjmHistory = onOpenSongFromBjmHistory,
-                                            visualEffectsDisabled = visualEffectsDisabled,
-                                            onVisualEffectsDisabledChange = onVisualEffectsDisabledChange,
-                                            autoUpdateEnabled = autoUpdateEnabled,
-                                            onAutoUpdateEnabledChange = onAutoUpdateEnabledChange,
-                                            onClearChartCache = onClearChartCache,
-                                            onOpenChart = onOpenChart,
-                                            onOpenSong = onOpenSong,
-                                            onCopyText = onCopyText,
-                                            showingDetail = showingDetail,
-                                            onBack = onBack,
-                                            onRequestExit = onRequestExit,
-                                        )
-                                    }
                                     if (selectedChart != null) {
                                         val selectedSongKey = songGroupKey(selectedChart)
                                         val songCharts = chartsBySongKey[selectedSongKey].orEmpty()

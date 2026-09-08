@@ -18,8 +18,9 @@ internal const val BROWSE_DURATION_MS = 240
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal data class BrowseMotion(
     val shared: SharedTransitionScope,
-    val visibility: AnimatedVisibilityScope,
+    val visibility: AnimatedVisibilityScope?,
     val betweenDetails: Boolean,
+    val callerVisible: Boolean = true,
 )
 
 internal val LocalBrowseMotion = staticCompositionLocalOf<BrowseMotion?> { null }
@@ -36,7 +37,14 @@ internal fun Modifier.browseSharedBounds(
     if (key == null) return this
     return with(motion.shared) {
         val state = rememberSharedContentState(key)
-        if (stable || (stableInDetails && motion.betweenDetails)) {
+        if (motion.visibility == null) {
+            sharedElementWithCallerManagedVisibility(
+                sharedContentState = state,
+                visible = motion.callerVisible,
+                boundsTransform = { _, _ -> tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
+                zIndexInOverlay = if (stable) 2f else 0f,
+            )
+        } else if (stable || (stableInDetails && motion.betweenDetails)) {
             sharedElement(
                 sharedContentState = state,
                 animatedVisibilityScope = motion.visibility,
@@ -65,10 +73,11 @@ internal fun Modifier.browseSongSurface(key: String): Modifier =
 @Composable
 internal fun Modifier.browseReveal(fromBottom: Boolean = false): Modifier {
     val motion = LocalBrowseMotion.current ?: return this
+    val visibility = motion.visibility ?: return this
     val layer = if (fromBottom) {
         with(motion.shared) { renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f) }
     } else this
-    return with(motion.visibility) {
+    return with(visibility) {
         layer.animateEnterExit(
             enter = if (fromBottom) {
                 slideInVertically(tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing)) { it }
@@ -79,4 +88,12 @@ internal fun Modifier.browseReveal(fromBottom: Boolean = false): Modifier {
             label = if (fromBottom) "player-reveal" else "notes-reveal",
         )
     }
+}
+
+/** Measure fixed controls at their final size throughout a shared transition. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+internal fun Modifier.keepSharedSize(): Modifier {
+    val motion = LocalBrowseMotion.current ?: return this
+    return with(motion.shared) { skipToLookaheadSize() }
 }
