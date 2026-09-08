@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.State
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,105 +56,44 @@ internal fun formatPlayerBpm(bpm: Float): String {
 }
 
 @Composable
-internal fun ChartPlayer(
+private fun PlayerLiveStats(
     data: TextageChartData,
-    settings: PlayerSettings,
-    onSettingsChange: (PlayerSettings) -> Unit,
-    modifier: Modifier = Modifier,
+    currentBeatState: State<Float>,
+    totalMeasures: Int,
 ) {
-    var playing by remember(data.chart.id) { mutableStateOf(false) }
-    var currentBeat by remember(data.chart.id) { mutableStateOf(0f) }
-    var configExpanded by remember(data.chart.id) { mutableStateOf(false) }
-    val safeSpeed = settings.safeSpeed
-    val safeSpeedMode = settings.safeSpeedMode
-    val safeGreenNumber = settings.safeGreenNumber
-    val duration = data.durationBeats.coerceAtLeast(4f)
-    val totalMeasures = data.measureCount().coerceAtLeast(1)
+    val currentBeat = currentBeatState.value
     val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
-    val passedNotes = data.notes.sumOf { note ->
-        if (note.holdBeats > 0f) {
-            (if (note.beat <= currentBeat + 0.001f) 1 else 0) +
-                (if (note.beat + note.holdBeats <= currentBeat + 0.001f) 1 else 0)
-        } else if (note.beat <= currentBeat + 0.001f) {
-            1
-        } else {
-            0
-        }
+    val passedNotes = data.passedNoteCount(currentBeat)
+    val totalNotes = data.chart.notes.takeIf { it > 0 } ?: data.totalNoteCount()
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = Muted)) { append("NOTE ") }
+            withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/$totalNotes") }
+            withStyle(SpanStyle(color = Muted)) { append(" · MEASURE ") }
+            withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/$totalMeasures") }
+        },
+        fontSize = 10.sp,
+    )
+}
+
+@Composable
+private fun PlayerTimeline(
+    data: TextageChartData,
+    currentBeatState: State<Float>,
+    duration: Float,
+    onPlayingChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    onSeek: (Float) -> Unit,
+) {
+    val currentBeat = currentBeatState.value
+    val totalSeconds = remember(data.chart.id, duration) {
+        data.secondsAtBeat(duration).coerceAtLeast(0.001f)
     }
-    val totalNotes = data.chart.notes.takeIf { it > 0 } ?: passedNotes.coerceAtLeast(data.notes.size)
     val currentSeconds = data.secondsAtBeat(currentBeat)
-    val totalSeconds = data.secondsAtBeat(duration).coerceAtLeast(0.001f)
     val progress = (currentSeconds / totalSeconds).coerceIn(0f, 1f)
     val currentBpm = data.bpmAt(currentBeat)
 
-    LaunchedEffect(data.chart.id, playing) {
-        if (!playing) return@LaunchedEffect
-        var lastFrameNanos = 0L
-        while (isActive) {
-            val frameNanos = withFrameNanos { it }
-            if (lastFrameNanos == 0L) {
-                lastFrameNanos = frameNanos
-                continue
-            }
-            val seconds = ((frameNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, .25f)
-            lastFrameNanos = frameNanos
-            currentBeat = data.beatAtSeconds(data.secondsAtBeat(currentBeat) + seconds)
-            if (currentBeat >= duration) {
-                currentBeat = duration
-                playing = false
-            }
-        }
-    }
-
-    Column(modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = Muted)) { append("NOTE ") }
-                        withStyle(SpanStyle(color = NormalBlue)) { append("$passedNotes/$totalNotes") }
-                        withStyle(SpanStyle(color = Muted)) { append(" · MEASURE ") }
-                        withStyle(SpanStyle(color = NormalBlue)) { append("$currentMeasure/$totalMeasures") }
-                    },
-                    fontSize = 10.sp,
-                )
-            }
-            TextButton(
-                onClick = {
-                    playing = false
-                    val measureStart = data.measureStart(currentMeasure)
-                    val targetMeasure = if (currentBeat <= measureStart + 0.001f) {
-                        currentMeasure - 1
-                    } else {
-                        currentMeasure
-                    }
-                    currentBeat = data.measureStart(targetMeasure.coerceAtLeast(1))
-                },
-                modifier = Modifier.size(34.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text("|‹", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-            TextButton(
-                onClick = {
-                    if (!playing && currentBeat >= duration) currentBeat = 0f
-                    playing = !playing
-                },
-                modifier = Modifier.size(42.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text(if (playing) "Ⅱ" else "▶", color = Purple, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
-            TextButton(
-                onClick = {
-                    playing = false
-                    currentBeat = if (currentMeasure >= totalMeasures) {
-                        duration
-                    } else {
-                        data.measureStart(currentMeasure + 1).coerceAtMost(duration)
-                    }
-                },
-                modifier = Modifier.size(34.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text("›|", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-        }
+    Column(modifier) {
         Box(Modifier.fillMaxWidth().height(18.dp)) {
             Text(
                 formatPlayerTime(currentSeconds),
@@ -178,10 +118,100 @@ internal fun ChartPlayer(
         Slider(
             value = progress,
             onValueChange = {
-                playing = false
-                currentBeat = data.beatAtSeconds(it * totalSeconds).coerceIn(0f, duration)
+                onPlayingChange(false)
+                onSeek(data.beatAtSeconds(it * totalSeconds).coerceIn(0f, duration))
             },
             modifier = Modifier.fillMaxWidth().height(24.dp),
+        )
+    }
+}
+
+@Composable
+internal fun ChartPlayer(
+    data: TextageChartData,
+    settings: PlayerSettings,
+    onSettingsChange: (PlayerSettings) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var playing by remember(data.chart.id) { mutableStateOf(false) }
+    val currentBeatState = remember(data.chart.id) { mutableStateOf(0f) }
+    var configExpanded by remember(data.chart.id) { mutableStateOf(false) }
+    val safeSpeed = settings.safeSpeed
+    val safeSpeedMode = settings.safeSpeedMode
+    val safeGreenNumber = settings.safeGreenNumber
+    val duration = data.durationBeats.coerceAtLeast(4f)
+    val totalMeasures = data.measureCount().coerceAtLeast(1)
+
+    LaunchedEffect(data.chart.id, playing) {
+        if (!playing) return@LaunchedEffect
+        var lastFrameNanos = 0L
+        while (isActive) {
+            val frameNanos = withFrameNanos { it }
+            if (lastFrameNanos == 0L) {
+                lastFrameNanos = frameNanos
+                continue
+            }
+            val seconds = ((frameNanos - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, .25f)
+            lastFrameNanos = frameNanos
+            val nextBeat = data.beatAtSeconds(data.secondsAtBeat(currentBeatState.value) + seconds)
+            currentBeatState.value = nextBeat
+            if (nextBeat >= duration) {
+                currentBeatState.value = duration
+                playing = false
+            }
+        }
+    }
+
+    Column(modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                PlayerLiveStats(data, currentBeatState, totalMeasures)
+            }
+            TextButton(
+                onClick = {
+                    playing = false
+                    val currentBeat = currentBeatState.value
+                    val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
+                    val measureStart = data.measureStart(currentMeasure)
+                    val targetMeasure = if (currentBeat <= measureStart + 0.001f) {
+                        currentMeasure - 1
+                    } else {
+                        currentMeasure
+                    }
+                    currentBeatState.value = data.measureStart(targetMeasure.coerceAtLeast(1))
+                },
+                modifier = Modifier.size(34.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) { Text("|‹", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+            TextButton(
+                onClick = {
+                    if (!playing && currentBeatState.value >= duration) currentBeatState.value = 0f
+                    playing = !playing
+                },
+                modifier = Modifier.size(42.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) { Text(if (playing) "Ⅱ" else "▶", color = Purple, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
+            TextButton(
+                onClick = {
+                    playing = false
+                    val currentMeasure = data.measureAt(currentBeatState.value).coerceIn(1, totalMeasures)
+                    currentBeatState.value = if (currentMeasure >= totalMeasures) {
+                        duration
+                    } else {
+                        data.measureStart(currentMeasure + 1).coerceAtMost(duration)
+                    }
+                },
+                modifier = Modifier.size(34.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+            ) { Text("›|", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+        }
+        PlayerTimeline(
+            data = data,
+            currentBeatState = currentBeatState,
+            duration = duration,
+            onPlayingChange = { playing = it },
+            onSeek = { currentBeatState.value = it },
         )
         Spacer(Modifier.height(8.dp))
 
@@ -194,7 +224,7 @@ internal fun ChartPlayer(
             ) {
                 ChartCanvas(
                     data = data,
-                    currentBeat = currentBeat,
+                    currentBeatState = currentBeatState,
                     speed = safeSpeed,
                     speedMode = safeSpeedMode,
                     greenNumber = safeGreenNumber,
@@ -210,7 +240,7 @@ internal fun ChartPlayer(
                     randomMapping1P = settings.safeRandomMapping1P,
                     randomMapping2P = settings.safeRandomMapping2P,
                     playing = playing,
-                    onCurrentBeatChange = { currentBeat = it.coerceIn(0f, duration) },
+                    onCurrentBeatChange = { currentBeatState.value = it.coerceIn(0f, duration) },
                     modifier = Modifier.fillMaxSize(),
                 )
             }

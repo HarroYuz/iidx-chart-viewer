@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.State
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +44,7 @@ import com.harroyuz.iidxchartviewer.ui.theme.PlayerSkyBlue
 @Composable
 internal fun ChartCanvas(
     data: TextageChartData,
-    currentBeat: Float,
+    currentBeatState: State<Float>,
     speed: Int,
     speedMode: String,
     greenNumber: Int,
@@ -80,14 +81,26 @@ internal fun ChartCanvas(
     val pixelsPerSecond = pixelsPerBeat * data.bpmAt(0f).coerceAtLeast(1f) / 60f
     val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
     val labelPadding = with(LocalDensity.current) { 4.dp.toPx() }
-    val latestCurrentBeat by androidx.compose.runtime.rememberUpdatedState(currentBeat)
     val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
     val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
-    val currentSeconds = data.secondsAtBeat(currentBeat)
-    fun pixelsFromCurrentBeat(beat: Float): Float = if (keepSpeedAcrossBpm) {
-        (data.secondsAtBeat(beat) - currentSeconds) * pixelsPerSecond
-    } else {
-        (beat - currentBeat) * pixelsPerBeat
+    val isSp = data.chart.mode != "DP"
+    val measureAlign = if (isSp && side == "2P") Paint.Align.RIGHT else Paint.Align.LEFT
+    val bpmAlign = if (isSp && side == "2P") Paint.Align.LEFT else Paint.Align.RIGHT
+    val measurePaint = remember(labelTextSize, measureAlign) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = PlayerMeasureText.toArgb()
+            textSize = labelTextSize
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = measureAlign
+        }
+    }
+    val bpmPaint = remember(labelTextSize, bpmAlign) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = PlayerBpmGreen.toArgb()
+            textSize = labelTextSize
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = bpmAlign
+        }
     }
     Canvas(
         modifier
@@ -97,16 +110,25 @@ internal fun ChartCanvas(
                     if (!latestPlaying) {
                         if (keepSpeedAcrossBpm) {
                             latestOnCurrentBeatChange(
-                                data.beatAtSeconds(data.secondsAtBeat(latestCurrentBeat) + dragAmount / pixelsPerSecond),
+                                data.beatAtSeconds(data.secondsAtBeat(currentBeatState.value) + dragAmount / pixelsPerSecond),
                             )
                         } else {
-                            latestOnCurrentBeatChange(latestCurrentBeat + dragAmount / pixelsPerBeat)
+                            latestOnCurrentBeatChange(currentBeatState.value + dragAmount / pixelsPerBeat)
                         }
                     }
                 }
         },
     ) {
-        val isSp = data.chart.mode != "DP"
+        // Read the rapidly changing playback state in the draw phase. This
+        // keeps the surrounding player controls out of the per-frame
+        // recomposition path.
+        val currentBeat = currentBeatState.value
+        val currentSeconds = data.secondsAtBeat(currentBeat)
+        fun pixelsFromCurrentBeat(beat: Float): Float = if (keepSpeedAcrossBpm) {
+            (data.secondsAtBeat(beat) - currentSeconds) * pixelsPerSecond
+        } else {
+            (beat - currentBeat) * pixelsPerBeat
+        }
         val dpGapUnits = 1.5f
         // SP has a gray information column opposite the scratch column. It
         // uses the same 1.5-note width as the DP center gap.
@@ -190,17 +212,17 @@ internal fun ChartCanvas(
         val bpmAlign = if (infoOnLeft) Paint.Align.LEFT else Paint.Align.RIGHT
         val measureBaseline = { y: Float -> (y - 4f).coerceAtLeast(labelTextSize) }
         val bpmBaseline = { y: Float -> (y - 4f).coerceAtLeast(labelTextSize) }
+        val firstVisibleBeat = if (keepSpeedAcrossBpm) {
+            data.beatAtSeconds((currentSeconds - size.height / pixelsPerSecond).coerceAtLeast(0f))
+        } else {
+            currentBeat - size.height / pixelsPerBeat
+        }
+        val lastVisibleBeat = if (keepSpeedAcrossBpm) {
+            data.beatAtSeconds(currentSeconds + size.height / pixelsPerSecond)
+        } else {
+            currentBeat + size.height / pixelsPerBeat
+        }
         if (showBarLines || showMeasureNumbers) {
-            val firstVisibleBeat = if (keepSpeedAcrossBpm) {
-                data.beatAtSeconds((currentSeconds - size.height / pixelsPerSecond).coerceAtLeast(0f))
-            } else {
-                currentBeat - size.height / pixelsPerBeat
-            }
-            val lastVisibleBeat = if (keepSpeedAcrossBpm) {
-                data.beatAtSeconds(currentSeconds + size.height / pixelsPerSecond)
-            } else {
-                currentBeat + size.height / pixelsPerBeat
-            }
             val firstMeasure = (
                 data.measureAt(firstVisibleBeat) - 2
             ).coerceAtLeast(1)
@@ -221,17 +243,11 @@ internal fun ChartCanvas(
                     }
                     if (showMeasureNumbers) {
                         drawIntoCanvas { canvas ->
-                            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                                color = PlayerMeasureText.toArgb()
-                                textSize = labelTextSize
-                                typeface = Typeface.DEFAULT_BOLD
-                                textAlign = measureAlign
-                            }
                             canvas.nativeCanvas.drawText(
                                 measure.toString(),
                                 measureX,
                                 measureBaseline(y),
-                                paint,
+                                measurePaint,
                             )
                         }
                     }
@@ -239,7 +255,7 @@ internal fun ChartCanvas(
             }
         }
         if (showBpmChanges) {
-            data.bpmChanges.filter { it.beat > 0f }.forEach { change ->
+            data.positiveBpmChanges.forEach { change ->
                 val y = judgeY - pixelsFromCurrentBeat(change.beat)
                 if (y in -labelTextSize..size.height + labelTextSize) {
                     drawLine(
@@ -249,17 +265,11 @@ internal fun ChartCanvas(
                         strokeWidth = 2f,
                     )
                     drawIntoCanvas { canvas ->
-                        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                            color = PlayerBpmGreen.toArgb()
-                            textSize = labelTextSize
-                            typeface = Typeface.DEFAULT_BOLD
-                            textAlign = bpmAlign
-                        }
                         canvas.nativeCanvas.drawText(
                             formatPlayerBpm(change.bpm),
                             bpmX,
                             bpmBaseline(y),
-                            paint,
+                            bpmPaint,
                         )
                     }
                 }
@@ -267,39 +277,59 @@ internal fun ChartCanvas(
         }
         drawLine(PlayerRed, Offset(0f, judgeY), Offset(size.width, judgeY), strokeWidth = 5f)
         clipRect(0f, 0f, size.width, size.height) {
-            data.notes.forEach { note ->
+            data.forEachVisibleNote(firstVisibleBeat, lastVisibleBeat) { note ->
             val noteEndBeat = note.beat + note.holdBeats
-            if (noteEndBeat < currentBeat - 0.001f) return@forEach
+            if (noteEndBeat < currentBeat - 0.001f) return@forEachVisibleNote
             val visibleStartBeat = maxOf(note.beat, currentBeat)
-            val y = judgeY - pixelsFromCurrentBeat(visibleStartBeat)
-            val endY = judgeY - pixelsFromCurrentBeat(noteEndBeat)
-            if (maxOf(y, endY) < 0f || minOf(y, endY) > size.height) return@forEach
+            val y = if (keepSpeedAcrossBpm) {
+                val visibleStartSeconds = maxOf(data.noteStartSeconds(note), currentSeconds)
+                judgeY - (visibleStartSeconds - currentSeconds) * pixelsPerSecond
+            } else {
+                judgeY - pixelsFromCurrentBeat(visibleStartBeat)
+            }
+            val endY = if (keepSpeedAcrossBpm) {
+                judgeY - (data.noteEndSeconds(note) - currentSeconds) * pixelsPerSecond
+            } else {
+                judgeY - pixelsFromCurrentBeat(noteEndBeat)
+            }
+            if (maxOf(y, endY) < 0f || minOf(y, endY) > size.height) return@forEachVisibleNote
             // Keep the source lane separate from the displayed lane. RANDOM
             // changes only the position; note color must remain tied to the
             // original chart lane (especially scratch vs. key colors).
             val sourceLane = note.lane
-            // FLIP swaps both complete sides before applying the destination side options.
-            val rawLane = if (isSp) sourceLane.mod(8) else dpOptionSourceLane(sourceLane.coerceIn(0, laneCount - 1), flip)
-            val laneOption = if (isSp) playOption else if (rawLane >= 8) playOption2P else playOption1P
+            val rawLane = if (isSp) {
+                sourceLane.mod(8)
+            } else {
+                sourceLane.coerceIn(0, laneCount - 1)
+            }
+            // In DP, FLIP is applied to the complete two-side chart first.
+            // The side-specific options must then be evaluated on the side
+            // where the chart has landed, matching the arcade behavior.
+            val optionSourceLane = if (isSp) rawLane else dpOptionSourceLane(rawLane, flip)
+            val laneOption = if (isSp) playOption else if (optionSourceLane >= 8) playOption2P else playOption1P
             fun mappedKeyLane(lane: Int, mapping: List<Int>): Int = when (laneOption) {
                 "MIRROR" -> 8 - lane
                 "RANDOM" -> (mapping.indexOf(lane).takeIf { it >= 0 } ?: (lane - 1)) + 1
                 else -> lane
             }
-            val logicalLane = if (isSp && rawLane > 0) {
-                mappedKeyLane(rawLane, if (side == "1P") randomMapping1P else randomMapping2P)
+            val logicalLane = if (isSp && optionSourceLane > 0) {
+                mappedKeyLane(optionSourceLane, if (side == "1P") randomMapping1P else randomMapping2P)
             } else rawLane
             val destinationKeyLane = when {
-                isSp && rawLane > 0 -> logicalLane
-                !isSp && rawLane in 1..7 -> mappedKeyLane(rawLane, randomMapping1P)
-                !isSp && rawLane >= 9 -> mappedKeyLane(rawLane - 8, randomMapping2P)
+                isSp && optionSourceLane > 0 -> logicalLane
+                !isSp && optionSourceLane in 1..7 -> mappedKeyLane(optionSourceLane, randomMapping1P)
+                !isSp && optionSourceLane >= 9 -> mappedKeyLane(optionSourceLane - 8, randomMapping2P)
                 else -> 0
             }
             val displayLane = when {
                 isSp && side == "2P" -> if (logicalLane == 0) 7 else logicalLane - 1
-                !isSp && rawLane >= 8 -> dpDisplayLane(rawLane, destinationKeyLane)
-                !isSp && rawLane in 1..7 -> destinationKeyLane
-                else -> logicalLane
+                !isSp && optionSourceLane >= 8 -> dpDisplayLane(optionSourceLane, destinationKeyLane)
+                !isSp && optionSourceLane in 1..7 -> destinationKeyLane
+                else -> if (!isSp && flip) {
+                    if (optionSourceLane == 8) 15 else optionSourceLane
+                } else {
+                    logicalLane
+                }
             }
             val laneIndex = displayLane.coerceIn(0, laneCount - 1)
             // In SP 2P the gray information column is physically before the
@@ -356,9 +386,3 @@ internal fun ChartCanvas(
         }
     }
 }
-
-/**
- * DP's 2P side is laid out as keys 1..7 from left to right, with the scratch
- * column on the far right. The source lane numbering already follows that
- * order, so it must not be mirrored when converting it to a display column.
- */
