@@ -30,9 +30,11 @@ class BjmClient(context: Context) {
     }
 
     suspend fun fetchScores(): BjmSyncResult = withContext(Dispatchers.IO) {
+        BjmAuthDiagnostics.event("score_sync start=true")
         val user = authMe()
         val body = requestGrpc("/api/WebUI/GetIidxScores")
         val decoded = IidxScoreProto.decodeGrpcWeb(body)
+        BjmAuthDiagnostics.event("score_sync completed=true status=${decoded.status} count=${decoded.scores.size}")
         BjmSyncResult(user = user, scores = decoded.scores, status = decoded.status)
     }
 
@@ -66,7 +68,11 @@ class BjmClient(context: Context) {
         )
     }
 
-    private fun authMeResult(): BjmAuthResult {
+    private fun authMeResult(): BjmAuthResult = performAuthMe().also {
+        BjmAuthDiagnostics.event("auth_result status=${it.statusCode} cookiePresent=${it.hadCookie} authenticated=${it.user != null} failure=${it.failure?.kind ?: "NONE"}")
+    }
+
+    private fun performAuthMe(): BjmAuthResult {
         val response = try {
             withBjmAuthRecovery(
                 request = sessionManager::probeAuthMeWithWebViewCookies,

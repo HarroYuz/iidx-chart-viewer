@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.harroyuz.iidxchartviewer.BuildConfig
+import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmAuthDiagnostics
 import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmClient
 import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmSessionManager
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
@@ -47,6 +48,7 @@ class BjmLoginActivity : ComponentActivity() {
                 val authenticated = runCatching {
                     if (!hasWebViewCookies()) null else bjmClient.probeAuthMe().user
                 }.getOrNull() != null
+                BjmAuthDiagnostics.event("login_poll authenticated=$authenticated")
                 runOnUiThread {
                     probeInFlight = false
                     if (destroyed) return@runOnUiThread
@@ -70,6 +72,7 @@ class BjmLoginActivity : ComponentActivity() {
         title = "登录 BJMANIA"
         bjmClient = BjmClient(this)
         sessionManager = BjmSessionManager.getInstance(this)
+        BjmAuthDiagnostics.cookies("login_created")
 
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
@@ -88,6 +91,8 @@ class BjmLoginActivity : ComponentActivity() {
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
                     sessionManager.setReferer(url)
+                    BjmAuthDiagnostics.event("login pageFinished=${BjmAuthDiagnostics.page(url)}")
+                    BjmAuthDiagnostics.cookies("login_page_finished")
                     handler.removeCallbacks(authPoll)
                     handler.post(authPoll)
                 }
@@ -106,6 +111,7 @@ class BjmLoginActivity : ComponentActivity() {
         }
         probeExecutor.execute {
             val restored = runCatching { bjmClient.probeAuthMe().user != null }.getOrDefault(false)
+            BjmAuthDiagnostics.event("login_restore authenticated=$restored")
             runOnUiThread {
                 if (destroyed || loginCompleted) return@runOnUiThread
                 if (restored) completeLogin() else webView.loadUrl("https://u.bjmania.com/login")
@@ -132,12 +138,15 @@ class BjmLoginActivity : ComponentActivity() {
         loginCompleted = true
         handler.removeCallbacks(authPoll)
         CookieManager.getInstance().flush()
+        BjmAuthDiagnostics.event("login_completed flushed=true")
+        BjmAuthDiagnostics.cookies("login_completed")
         // API calls rehydrate from this persistent CookieManager on their worker thread.
         setResult(RESULT_OK)
         finish()
     }
 
     override fun onDestroy() {
+        BjmAuthDiagnostics.event("login_destroy completed=$loginCompleted")
         destroyed = true
         handler.removeCallbacks(authPoll)
         probeExecutor.shutdownNow()

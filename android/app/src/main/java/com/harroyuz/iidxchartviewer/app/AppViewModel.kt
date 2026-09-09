@@ -11,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.harroyuz.iidxchartviewer.BuildConfig
 import com.harroyuz.iidxchartviewer.data.local.IidxLocalStore
+import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmAuthDiagnostics
 import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmClient
 import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmException
 import com.harroyuz.iidxchartviewer.data.remote.textage.TextageChartPage
@@ -139,6 +140,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                     localDataStage = "正在读取本地曲目"
                 }
                 val loadedFromDisk = store.load()
+                BjmAuthDiagnostics.event("startup version=${BuildConfig.VERSION_NAME} sdk=${android.os.Build.VERSION.SDK_INT} persistedUser=${loadedFromDisk.bjmUser != null}")
+                BjmAuthDiagnostics.cookies("startup")
                 val loadedBjmHistory = store.loadBjmHistory()
                 // Startup is entirely local: a failed network check must never erase a session.
                 val authenticatedState = loadedFromDisk

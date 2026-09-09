@@ -74,6 +74,7 @@ class BjmSessionManager private constructor(context: Context) {
         }
         val request = builder.build()
         val response = chain.proceed(request)
+        BjmAuthDiagnostics.response(response)
         if (request.url.host == HOST) persistResponseCookies(request.url, response)
         response
     }
@@ -122,6 +123,7 @@ class BjmSessionManager private constructor(context: Context) {
 
     @Synchronized
     fun clearAllSession() {
+        BjmAuthDiagnostics.event("session_clear explicit_logout=true")
         clearNativeSession()
         val current = webViewCookieManager.getCookie(ORIGIN).orEmpty()
         current.split(';')
@@ -139,8 +141,13 @@ class BjmSessionManager private constructor(context: Context) {
     }
 
     fun probeAuthMeWithWebViewCookies(): AuthCheckResult {
+        BjmAuthDiagnostics.cookies("probe_before")
         val cookieHeader = readWebViewCookieHeaderWithWarmup()
-        if (cookieHeader.isNullOrBlank()) return AuthCheckResult(false, 0, 0, false, "")
+        BjmAuthDiagnostics.event("probe cookiePresent=${!cookieHeader.isNullOrBlank()}")
+        if (cookieHeader.isNullOrBlank()) {
+            BjmAuthDiagnostics.event("probe result=NO_COOKIE networkRequest=false recoveryAttempt=false")
+            return AuthCheckResult(false, 0, 0, false, "")
+        }
         val request = Request.Builder()
             .url("$ORIGIN/api/auth/me")
             .header("Accept", "application/json")
@@ -167,6 +174,7 @@ class BjmSessionManager private constructor(context: Context) {
      */
     fun refreshWebViewCookiesBlocking(timeoutMillis: Long = 8_000L): Boolean {
         if (Looper.myLooper() == Looper.getMainLooper()) return false
+        BjmAuthDiagnostics.event("refresh start=true")
         synchronized(webViewRefreshLock) {
             val latch = CountDownLatch(1)
             val refreshed = AtomicBoolean(false)
@@ -181,6 +189,8 @@ class BjmSessionManager private constructor(context: Context) {
                     webView.stopLoading()
                     webView.destroy()
                 }
+                BjmAuthDiagnostics.event("refresh finished=$success")
+                BjmAuthDiagnostics.cookies("refresh_finished")
                 refreshed.set(success)
                 latch.countDown()
             }
@@ -200,6 +210,7 @@ class BjmSessionManager private constructor(context: Context) {
                     webView.webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String) {
                             super.onPageFinished(view, url)
+                            BjmAuthDiagnostics.event("refresh pageFinished=${BjmAuthDiagnostics.page(url)}")
                             mainHandler.postDelayed({ finish(true) }, 200L)
                         }
 
@@ -209,7 +220,10 @@ class BjmSessionManager private constructor(context: Context) {
                             error: WebResourceError,
                         ) {
                             super.onReceivedError(view, request, error)
-                            if (request.isForMainFrame) finish(false)
+                            if (request.isForMainFrame) {
+                                BjmAuthDiagnostics.event("refresh mainFrameError=${error.errorCode}")
+                                finish(false)
+                            }
                         }
                     }
                     webView.loadUrl("$ORIGIN/api/auth/me", mapOf("Accept" to "application/json"))
@@ -220,6 +234,7 @@ class BjmSessionManager private constructor(context: Context) {
 
             try {
                 if (!latch.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+                    BjmAuthDiagnostics.event("refresh timeout=true")
                     mainHandler.post { finish(false) }
                 }
             } catch (error: InterruptedException) {
@@ -245,7 +260,10 @@ class BjmSessionManager private constructor(context: Context) {
         response.headers("Set-Cookie").forEach { cookie ->
             webViewCookieManager.setCookie(url.toString(), cookie)
         }
-        if (response.headers("Set-Cookie").isNotEmpty()) webViewCookieManager.flush()
+        if (response.headers("Set-Cookie").isNotEmpty()) {
+            webViewCookieManager.flush()
+            BjmAuthDiagnostics.cookies("response_flushed")
+        }
     }
 
     private fun parseWebViewCookies(header: String): List<Cookie> =
