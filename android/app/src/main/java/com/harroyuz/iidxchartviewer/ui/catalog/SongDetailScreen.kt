@@ -36,6 +36,7 @@ import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
 import com.harroyuz.iidxchartviewer.ui.components.AutoScrollingText
+import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
 import com.harroyuz.iidxchartviewer.ui.components.DetailStat
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
@@ -80,7 +81,7 @@ internal fun SongDetailScreen(
                 AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(song.composer) })
             }
             Column(horizontalAlignment = Alignment.End) {
-                DetailStat("版本 ", song.version.ifBlank { "—" }, Modifier.browseSharedBounds("version:${songGroupKey(song)}", stableInDetails = true))
+                ChartVersionLabel(song.version, song.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(song)}", stableInDetails = true), detail = true)
                 DetailStat("BPM ", song.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(song)}", stableInDetails = true))
             }
         }

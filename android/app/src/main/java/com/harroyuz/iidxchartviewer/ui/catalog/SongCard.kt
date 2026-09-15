@@ -1,7 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
-import com.harroyuz.iidxchartviewer.ui.components.RemovedSongColor
-import com.harroyuz.iidxchartviewer.ui.components.arcadeStatusLabel
+import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
 import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
 import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import androidx.compose.foundation.background
@@ -111,9 +110,6 @@ private fun SongGroupContent(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(displayTitle(song.title, song.sourceLabel), color = songTitleColor(representative?.arcadeStatus), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                representative?.arcadeStatus?.takeIf { it.isUnavailable }?.let { status ->
-                    Text(arcadeStatusLabel(status), color = RemovedSongColor, fontSize = 10.sp)
-                }
                 if (song.subtitle.isNotBlank()) {
                     Text(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -127,7 +123,7 @@ private fun SongGroupContent(
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(song.version.ifBlank { "—" }, modifier = Modifier.browseSharedBounds(representative?.let { "version:${songGroupKey(it)}" }), color = NormalBlue, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                ChartVersionLabel(song.version, representative?.arcadeStatus, Modifier.browseSharedBounds(representative?.let { "version:${songGroupKey(it)}" }))
                 Text(
                     buildAnnotatedString {
                         withStyle(SpanStyle(color = Muted)) { append("BPM ") }

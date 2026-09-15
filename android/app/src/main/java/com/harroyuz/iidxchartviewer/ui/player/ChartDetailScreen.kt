@@ -43,6 +43,7 @@ import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
 import com.harroyuz.iidxchartviewer.ui.components.AutoScrollingText
 import com.harroyuz.iidxchartviewer.ui.components.ChartLoadError
 import com.harroyuz.iidxchartviewer.ui.components.ChartParseWarning
+import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
 import com.harroyuz.iidxchartviewer.ui.components.DetailStat
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
 import com.harroyuz.iidxchartviewer.ui.components.StrokedText
@@ -94,7 +95,7 @@ internal fun ChartDetailScreen(
                 AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(chart.composer) })
             }
             Column(horizontalAlignment = Alignment.End) {
-                DetailStat("版本 ", chart.version.ifBlank { "—" }, Modifier.browseSharedBounds("version:${songGroupKey(chart)}", stableInDetails = true))
+                ChartVersionLabel(chart.version, chart.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(chart)}", stableInDetails = true), detail = true)
                 DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(chart)}", stableInDetails = true))
                 DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—", Modifier.browseReveal())
             }
