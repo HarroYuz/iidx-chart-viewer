@@ -42,6 +42,7 @@ import com.harroyuz.iidxchartviewer.domain.sync.isSameLocalDate
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -100,6 +101,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         private set
     internal var chartLoading by mutableStateOf(false)
         private set
+    private var chartLoadJob: Job? = null
+    private var chartLoadRequest = 0L
     private var browseSelection by mutableStateOf(BrowseSelection())
     internal val selectedSong: IidxChart? get() = browseSelection.song
     internal val selectedChart: IidxChart? get() = browseSelection.chart
@@ -677,11 +680,21 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     internal fun openChart(chart: IidxChart) {
-        browseSelection = browseSelection.openChart(chart)
-        selectedChartData = null
-        chartLoading = true
+        val request = ++chartLoadRequest
+        chartLoadJob?.cancel()
+        val replacingPlayer = selectedChart != null && selectedChartData?.notes?.isNotEmpty() == true
+        // Keep the current selection and its data together until the next chart is ready.
+        if (!replacingPlayer) {
+            browseSelection = browseSelection.openChart(chart)
+            selectedChartData = null
+        }
+        chartLoading = !replacingPlayer
 
-        viewModelScope.launch {
+        chartLoadJob = viewModelScope.launch {
+            val loadingIndicator = if (replacingPlayer) launch {
+                delay(250L)
+                if (chartLoadRequest == request) chartLoading = true
+            } else null
             var fetchedPage: TextageChartPage? = null
             try {
                 val cached = withContext(Dispatchers.IO) { store.loadChartData(chart) }
@@ -695,7 +708,10 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                     withContext(Dispatchers.IO) { store.saveChartData(fetched) }
                     fetched
                 }
-                if (selectedChart?.id == chart.id) selectedChartData = data
+                if (chartLoadRequest != request) return@launch
+                browseSelection = browseSelection.openChart(chart)
+                selectedChartData = data
+                chartLoading = false
                 val siblings = chartFamily(chart)
                     .filter { it.id != chart.id && it.textageUrl != null }
                 if (siblings.isNotEmpty()) {
@@ -706,12 +722,14 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                if (selectedChart?.id == chart.id) {
+                if (chartLoadRequest == request) {
+                    browseSelection = browseSelection.openChart(chart)
                     selectedChartData = null
                     message = error.message ?: "谱面数据获取失败"
                 }
             } finally {
-                if (selectedChart?.id == chart.id) chartLoading = false
+                loadingIndicator?.cancel()
+                if (chartLoadRequest == request) chartLoading = false
             }
         }
     }
@@ -747,7 +765,14 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    private fun cancelChartLoad() {
+        chartLoadRequest++
+        chartLoadJob?.cancel()
+        chartLoadJob = null
+    }
+
     internal fun openSong(chart: IidxChart, fromBjmHistory: Boolean? = null) {
+        cancelChartLoad()
         fromBjmHistory?.let { returnToBjmHistory = it }
         browseSelection = BrowseSelection(song = chart)
         selectedChartData = null
@@ -755,6 +780,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private fun closeChart() {
+        cancelChartLoad()
         if (selectedChart != null) browseSelection = browseSelection.back()
         selectedChartData = null
         chartLoading = false

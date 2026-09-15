@@ -1,6 +1,5 @@
 package com.harroyuz.iidxchartviewer.ui.history
 
-import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -260,7 +259,7 @@ private fun BjmHistoryRow(
                 verticalArrangement = if (subtitle == null) Arrangement.SpaceBetween else Arrangement.Top,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    AutoScrollingText(title, color = songTitleColor(chart?.arcadeStatus), fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold)
+                    AutoScrollingText(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold)
                     subtitle?.let {
                         AutoScrollingText(it, color = Muted, fontSize = 10.sp, lineHeight = 11.sp)
                     }

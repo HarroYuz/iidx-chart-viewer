@@ -1,7 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
 import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
-import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
 import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -109,7 +108,7 @@ private fun SongGroupContent(
                     onCopy = onCopyText,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(displayTitle(song.title, song.sourceLabel), color = songTitleColor(representative?.arcadeStatus), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (song.subtitle.isNotBlank()) {
                     Text(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
