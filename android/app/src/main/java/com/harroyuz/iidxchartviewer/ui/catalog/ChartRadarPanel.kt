@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -144,7 +145,7 @@ private fun RadarDiagram(radar: ChartRadar, visualEffectsDisabled: Boolean) {
                 if (visualEffectsDisabled) snap() else tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing)
             },
             label = axis.label,
-        ) { it.values[index] / 200f }
+        ) { it.values[index] / RADAR_GRID_MAX }
     }
     val animatedAccent = transition.animateColor(
         transitionSpec = {
@@ -172,13 +173,28 @@ private fun RadarDiagram(radar: ChartRadar, visualEffectsDisabled: Boolean) {
     val labelWidth = with(LocalDensity.current) { columnWidths.first.toDp() }
     val valueWidth = with(LocalDensity.current) { columnWidths.second.toDp() }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).height(188.dp).semantics { contentDescription = "谱面雷达图" }.drawWithCache {
+        Box(Modifier.weight(1f).height(188.dp).clipToBounds().semantics { contentDescription = "谱面雷达图" }.drawWithCache {
             val center = Offset(size.width / 2, size.height / 2)
-            val radius = minOf(size.width, size.height) * .33f
-            fun point(index: Int, scale: Float): Offset {
-                val angle = -Math.PI / 2 + index * Math.PI / 3
-                return center + Offset(cos(angle).toFloat(), sin(angle).toFloat()) * radius * scale
+            val dotRadius = 2.5.dp.toPx()
+            val axisLabels = RadarAxis.entries.map { axis ->
+                listOf(FontWeight.Normal, FontWeight.Bold).map { weight ->
+                    textMeasurer.measure(axis.label, TextStyle(
+                        color = radarColor(axis), fontSize = 8.sp, fontWeight = weight,
+                    ))
+                }
             }
+            val geometry = radarGeometry(
+                size.width, size.height,
+                axisLabels.maxOf { variants -> variants.maxOf { it.size.width } }.toFloat(),
+                axisLabels.maxOf { variants -> variants.maxOf { it.size.height } }.toFloat(),
+                edgePadding = 8.dp.toPx(), dotRadius = dotRadius,
+            )
+            val directions = RadarAxis.entries.indices.map { index ->
+                val angle = -Math.PI / 2 + index * Math.PI / 3
+                Offset(cos(angle).toFloat(), sin(angle).toFloat())
+            }
+            fun point(index: Int, scale: Float): Offset =
+                center + directions[index] * geometry.gridRadius * scale
             fun polygon(scales: List<Float>): Path = Path().apply {
                 scales.forEachIndexed { index, scale ->
                     val p = point(index, scale)
@@ -189,26 +205,24 @@ private fun RadarDiagram(radar: ChartRadar, visualEffectsDisabled: Boolean) {
             val grid = (1..4).map { step -> polygon(List(6) { step / 4f }) }
             val endpoints = RadarAxis.entries.indices.map { point(it, 1f) }
             val labels = RadarAxis.entries.mapIndexed { index, axis ->
-                val label = textMeasurer.measure(axis.label, TextStyle(
-                    color = radarColor(axis), fontSize = 8.sp,
-                    fontWeight = if (axis == radar.dominantAxis) FontWeight.Bold else FontWeight.Normal,
-                ))
-                label to (point(index, 1.32f) - Offset(label.size.width / 2f, label.size.height / 2f))
+                val label = axisLabels[index][if (axis == radar.dominantAxis) 1 else 0]
+                label to (center + directions[index] * geometry.labelRadius -
+                    Offset(label.size.width / 2f, label.size.height / 2f))
             }
             val shape = Path()
             val vertices = Array(RadarAxis.entries.size) { Offset.Zero }
             val gridStroke = Stroke(1.dp.toPx())
             val radarStroke = Stroke(2.dp.toPx())
-            val dotRadius = 2.5.dp.toPx()
             onDrawBehind {
                 grid.forEach { drawPath(it, Muted.copy(alpha = .18f), style = gridStroke) }
                 endpoints.forEach { drawLine(Muted.copy(alpha = .15f), center, it, gridStroke.width) }
-                labels.forEach { (label, position) -> drawText(label, topLeft = position) }
                 // Read animation state only when drawing, preserving cached grid/text layouts.
                 val accent = if (visualEffectsDisabled) radarColor(radar.dominantAxis) else animatedAccent.value
                 shape.rewind()
                 vertices.indices.forEach { index ->
-                    val scale = if (visualEffectsDisabled) radar.values[index] / 200f else animatedValues[index].value
+                    // Only guard interpolation overshoot; values above the 100 grid remain proportional.
+                    val scale = (if (visualEffectsDisabled) radar.values[index] / RADAR_GRID_MAX else animatedValues[index].value)
+                        .coerceIn(0f, RADAR_VALUE_MAX / RADAR_GRID_MAX)
                     val vertex = point(index, scale)
                     vertices[index] = vertex
                     if (index == 0) shape.moveTo(vertex.x, vertex.y) else shape.lineTo(vertex.x, vertex.y)
@@ -217,6 +231,7 @@ private fun RadarDiagram(radar: ChartRadar, visualEffectsDisabled: Boolean) {
                 drawPath(shape, accent.copy(alpha = .20f))
                 drawPath(shape, accent, style = radarStroke)
                 vertices.forEach { drawCircle(accent, dotRadius, it) }
+                labels.forEach { (label, position) -> drawText(label, topLeft = position) }
             }
         })
         Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
