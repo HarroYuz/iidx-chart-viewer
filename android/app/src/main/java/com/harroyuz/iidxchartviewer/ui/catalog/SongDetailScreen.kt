@@ -50,6 +50,7 @@ internal fun SongDetailScreen(
     song: IidxChart,
     chartMetadata: BjmChartMetadata?,
     chartMetadataLoading: Boolean,
+    visualEffectsDisabled: Boolean,
     chartMetadataError: String?,
     onRefreshChartMetadata: () -> Unit,
     charts: List<IidxChart>,
@@ -107,6 +108,7 @@ internal fun SongDetailScreen(
                         mode = mode,
                         metadata = chartMetadata,
                         loading = chartMetadataLoading,
+                        visualEffectsDisabled = visualEffectsDisabled,
                         error = chartMetadataError,
                         onRetry = onRefreshChartMetadata,
                     )

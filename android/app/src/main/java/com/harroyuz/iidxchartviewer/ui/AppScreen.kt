@@ -324,6 +324,7 @@ internal fun IidxApp(
                                             song = selectedSong,
                                             chartMetadata = chartMetadata,
                                             chartMetadataLoading = chartMetadataLoading,
+                                            visualEffectsDisabled = visualEffectsDisabled,
                                             chartMetadataError = chartMetadataError,
                                             onRefreshChartMetadata = onRefreshChartMetadata,
                                             charts = family,
