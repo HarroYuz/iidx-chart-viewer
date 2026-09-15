@@ -18,7 +18,15 @@ internal fun appendBjmHistory(
     val additions = incoming.filter { score ->
         score.time > latestTime && known.add(bjmHistoryRecordKey(score))
     }
-    return (existing + additions)
+    val refreshed = incoming.associateBy(::bjmHistoryRecordKey)
+    val enriched = existing.map { old ->
+        val current = refreshed[bjmHistoryRecordKey(old)]
+        if (current != null && current.exScore == old.exScore &&
+            current.sourceNoteCount != null && current.sourceDjRate != null
+        ) old.copy(sourceNoteCount = current.sourceNoteCount, sourceDjRate = current.sourceDjRate)
+        else old
+    }
+    return (enriched + additions)
         .distinctBy(::bjmHistoryRecordKey)
         .sortedWith(compareByDescending<BjmScore> { it.time }.thenByDescending { it.key })
 }

@@ -194,6 +194,12 @@ class IidxLocalStore(context: Context) {
         preferences.getLong("bjm_synced_at", 0L),
     )
 
+    fun bjmScoresNeedNoteReference(): Boolean = preferences.getInt("bjm_score_reference_version", 0) < 1
+
+    fun markBjmScoreReferencesSynced() {
+        preferences.edit().putInt("bjm_score_reference_version", 1).apply()
+    }
+
     fun bjmScoresRevision(): Long = preferences.getLong(
         "bjm_scores_revision",
         preferences.getLong("bjm_synced_at", 0L),

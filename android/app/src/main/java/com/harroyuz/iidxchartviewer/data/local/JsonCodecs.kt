@@ -91,6 +91,8 @@ internal fun BjmScore.toJson() = JSONObject().apply {
     put("ex_score", exScore)
     put("option1", option1)
     put("option2", option2)
+    put("source_note_count", sourceNoteCount)
+    put("source_dj_rate", sourceDjRate)
 }
 
 internal fun JSONObject.toScore() = BjmScore(
@@ -103,6 +105,8 @@ internal fun JSONObject.toScore() = BjmScore(
     exScore = optInt("ex_score"),
     option1 = optLong("option1"),
     option2 = optLong("option2"),
+    sourceNoteCount = optInt("source_note_count").takeIf { it > 0 },
+    sourceDjRate = optString("source_dj_rate").takeIf { it.isNotBlank() && it != "null" },
 )
 
 internal fun BjmMusic.toJson() = JSONObject().apply {

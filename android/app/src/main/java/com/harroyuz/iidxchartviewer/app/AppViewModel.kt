@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.app
 
+import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmChartMetadataRepository
+import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -28,6 +30,7 @@ import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.domain.model.TextageChartData
 import com.harroyuz.iidxchartviewer.domain.model.TextageSyncProgress
 import com.harroyuz.iidxchartviewer.domain.player.PlayerSettings
+import com.harroyuz.iidxchartviewer.domain.score.withNoteReference
 import com.harroyuz.iidxchartviewer.domain.score.appendBjmHistory
 import com.harroyuz.iidxchartviewer.domain.score.buildBjmIndex
 import com.harroyuz.iidxchartviewer.domain.score.isPersistedBjmIndexUsable
@@ -51,6 +54,13 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
 
     private val store = IidxLocalStore(application)
     private val bjmClient = BjmClient(application)
+    private val chartMetadataRepository = BjmChartMetadataRepository(application)
+    internal var chartMetadata by mutableStateOf<BjmChartMetadata?>(null)
+        private set
+    internal var chartMetadataLoading by mutableStateOf(false)
+        private set
+    internal var chartMetadataError by mutableStateOf<String?>(null)
+        private set
     private val textageClient = TextageClient()
     private val githubUpdateClient = GithubUpdateClient()
 
@@ -143,11 +153,13 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                 BjmAuthDiagnostics.event("startup version=${BuildConfig.VERSION_NAME} sdk=${android.os.Build.VERSION.SDK_INT} persistedUser=${loadedFromDisk.bjmUser != null}")
                 BjmAuthDiagnostics.cookies("startup")
                 val loadedBjmHistory = store.loadBjmHistory()
+                val loadedChartMetadata = chartMetadataRepository.loadCached()
                 // Startup is entirely local: a failed network check must never erase a session.
                 val authenticatedState = loadedFromDisk
                 withContext(Dispatchers.Main) {
                     appState = authenticatedState
                     bjmHistory = loadedBjmHistory
+                    chartMetadata = loadedChartMetadata
                     localDataProgress = .45f
                     localDataStage = if (
                         authenticatedState.charts.isNotEmpty() && authenticatedState.songGroups.isEmpty()
@@ -220,6 +232,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                         needsBootstrap -> syncAllData()
                         automaticSyncTargets.isNotEmpty() -> syncAllData(automatic = true)
                     }
+                    refreshChartMetadata()
                     checkForUpdatesIfDue()
                 }
             } catch (error: Exception) {
@@ -230,6 +243,25 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                     message = error.message ?: "本地数据加载失败"
                 }
             }
+        }
+    }
+
+    internal fun refreshChartMetadata() {
+        if (chartMetadataLoading) return
+        viewModelScope.launch { fetchChartMetadata() }
+    }
+
+    private suspend fun fetchChartMetadata(): BjmChartMetadata? {
+        chartMetadataLoading = true
+        chartMetadataError = null
+        return try {
+            chartMetadataRepository.refresh().also { chartMetadata = it }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            chartMetadataError = "雷达与 NOTE 数据更新失败，可稍后重试"
+            null
+        } finally {
+            chartMetadataLoading = false
         }
     }
 
@@ -442,7 +474,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         if (appState.bjmMusic.isEmpty() || !isSameLocalDate(store.bjmMusicRevision(), now)) {
             add(DataSyncTarget.BJM_MUSIC)
         }
-        if (appState.bjmUser != null && !isSameLocalDate(store.bjmScoresRevision(), now)) {
+        if (appState.bjmUser != null && (!isSameLocalDate(store.bjmScoresRevision(), now) ||
+                store.bjmScoresNeedNoteReference())) {
             add(DataSyncTarget.BJM_SCORES)
         }
     }
@@ -559,17 +592,29 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
             store.save(nextState)
         }
         bjmMusicLastSyncAt = revision
+        fetchChartMetadata()
     }
 
     private suspend fun syncBjmScoresData(): Int {
         // Authentication and network failures leave persisted user data and credentials intact.
         val result = bjmClient.fetchScores()
+        val metadata = fetchChartMetadata()
+        val previous = appState.bjmScores.associateBy { it.key }
+        val scores = result.scores.map { score ->
+            val noteCount = metadata?.noteCounts?.get(score.key)
+            if (noteCount != null) score.withNoteReference(noteCount)
+            else {
+                // An asset outage must not discard a previously verified identical record.
+                val old = previous[score.key]?.takeIf { it.time == score.time && it.exScore == score.exScore }
+                score.copy(sourceNoteCount = old?.sourceNoteCount, sourceDjRate = old?.sourceDjRate)
+            }
+        }
         val mergedHistory = withContext(Dispatchers.IO) {
             val previousHistory = store.loadBjmHistory()
-            appendBjmHistory(previousHistory, result.scores).also(store::saveBjmHistory)
+            appendBjmHistory(previousHistory, scores).also(store::saveBjmHistory)
         }
         val nextState = appState.copy(
-            bjmScores = result.scores,
+            bjmScores = scores,
             bjmUser = result.user,
             bjmSyncedAt = System.currentTimeMillis(),
         )
@@ -579,6 +624,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         withContext(Dispatchers.IO) {
             store.setBjmScoresRevision(revision)
             store.save(nextState)
+            if (metadata != null) store.markBjmScoreReferencesSynced()
         }
         bjmScoresLastSyncAt = revision
         return result.scores.size

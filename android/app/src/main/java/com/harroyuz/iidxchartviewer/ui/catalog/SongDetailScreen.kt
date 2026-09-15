@@ -1,7 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,9 +21,6 @@ import androidx.compose.material3.Text
 import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.ui.motion.browseSharedBounds
 import com.harroyuz.iidxchartviewer.ui.motion.browseSongSurface
-import androidx.compose.runtime.remember
-import androidx.compose.ui.text.style.TextOverflow
-import com.harroyuz.iidxchartviewer.ui.history.formatBjmHistoryTime
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,15 +38,19 @@ import com.harroyuz.iidxchartviewer.ui.components.DetailStat
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
+import com.harroyuz.iidxchartviewer.ui.components.hasUnmatchedScore
 import com.harroyuz.iidxchartviewer.ui.components.scoreForChart
 import com.harroyuz.iidxchartviewer.ui.theme.Background
-import com.harroyuz.iidxchartviewer.ui.theme.CardSurface
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
 import com.harroyuz.iidxchartviewer.ui.theme.Muted
 
 @Composable
 internal fun SongDetailScreen(
     song: IidxChart,
+    chartMetadata: BjmChartMetadata?,
+    chartMetadataLoading: Boolean,
+    chartMetadataError: String?,
+    onRefreshChartMetadata: () -> Unit,
     charts: List<IidxChart>,
     bjmIndex: BjmIndex,
     mode: String,
@@ -87,10 +88,23 @@ internal fun SongDetailScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item(key = "radar") {
+                ChartRadarPanel(
+                    songKey = songGroupKey(song),
+                    charts = charts,
+                    musicId = bjmIndex.songMusicIds[songGroupKey(song)],
+                    mode = mode,
+                    metadata = chartMetadata,
+                    loading = chartMetadataLoading,
+                    error = chartMetadataError,
+                    onRetry = onRefreshChartMetadata,
+                )
+            }
             items(charts, key = { it.id }) { chart ->
                 DifficultyScoreCard(
                     chart = chart,
                     score = scoreForChart(chart, bjmIndex),
+                    unmatchedScore = hasUnmatchedScore(chart, bjmIndex),
                     onOpenChart = onOpenChart,
                 )
             }
@@ -103,9 +117,9 @@ internal fun SongDetailScreen(
 private fun DifficultyScoreCard(
     chart: IidxChart,
     score: BjmScore?,
+    unmatchedScore: Boolean,
     onOpenChart: (IidxChart) -> Unit,
 ) {
-    val scoreDate = remember(score?.time) { score?.let { formatBjmHistoryTime(it.time) } }
     val accent = difficultyColor(chart.difficulty)
     val shape = MaterialTheme.shapes.medium
     val available = chart.textageUrl != null
@@ -144,18 +158,10 @@ private fun DifficultyScoreCard(
                 ChartScoreSummary(
                     score = score,
                     noteCount = chart.notes,
+                    showTime = true,
+                    unmatchedScore = unmatchedScore,
                     modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
                 )
-                if (scoreDate != null) {
-                    Text(
-                        scoreDate,
-                        color = Muted,
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
         }
     }

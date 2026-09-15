@@ -50,6 +50,7 @@ import com.harroyuz.iidxchartviewer.ui.components.clearFlagColor
 import com.harroyuz.iidxchartviewer.ui.components.clearFlagDetailName
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
+import com.harroyuz.iidxchartviewer.domain.score.matchesChartNotes
 import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
@@ -90,7 +91,7 @@ internal fun BjmDataScreen(
     val filteredHistory = remember(history, query, selectedDate, historyCharts, musicById) {
         val normalizedQuery = query.trim()
         history.filter { record ->
-            val chart = historyCharts[record.key]
+            val chart = historyCharts[record.key]?.firstOrNull { record.matchesChartNotes(it.notes) }
             val music = musicById[record.musicId]
             val matchesQuery = normalizedQuery.isBlank() || listOf(
                 chart?.title,
@@ -202,7 +203,7 @@ internal fun BjmDataScreen(
                         items(filteredHistory, key = ::bjmHistoryRecordKey) { record ->
                             BjmHistoryRow(
                                 record = record,
-                                chart = historyCharts[record.key],
+                                chart = historyCharts[record.key]?.firstOrNull { record.matchesChartNotes(it.notes) },
                                 music = musicById[record.musicId],
                                 onOpenSong = onOpenSong,
                             )
@@ -298,7 +299,7 @@ private fun buildBjmHistoryChartIndex(
     state: IidxAppState,
     bjmIndex: BjmIndex,
     chartsById: Map<String, IidxChart>,
-): Map<String, IidxChart> = buildMap {
+): Map<String, List<IidxChart>> = buildMap {
     state.songGroups.forEach { group ->
         val musicId = bjmIndex.songMusicIds[group.key] ?: return@forEach
         group.chartIds
@@ -307,10 +308,9 @@ private fun buildBjmHistoryChartIndex(
                 "$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"
             }
             .forEach { (key, candidates) ->
-                val chart = candidates.maxWithOrNull(
-                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
-                ) ?: return@forEach
-                put(key, chart)
+                put(key, (get(key).orEmpty() + candidates).distinctBy { it.id }.sortedWith(
+                    compareByDescending<IidxChart> { it.textageUrl != null }.thenByDescending { it.notes },
+                ))
             }
     }
 }

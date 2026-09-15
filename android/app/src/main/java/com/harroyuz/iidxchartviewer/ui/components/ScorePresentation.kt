@@ -5,6 +5,7 @@ import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.domain.model.BjmIndex
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
+import com.harroyuz.iidxchartviewer.domain.score.matchesChartNotes
 import com.harroyuz.iidxchartviewer.domain.score.difficultyIndex
 import com.harroyuz.iidxchartviewer.domain.score.rankSummary
 import com.harroyuz.iidxchartviewer.ui.theme.ClearAssist
@@ -27,7 +28,13 @@ internal fun difficultyColor(value: String): ComposeColor = when (value) {
     else -> Muted
 }
 
-internal fun scoreForChart(chart: IidxChart, index: BjmIndex): BjmScore? {
+internal fun scoreForChart(chart: IidxChart, index: BjmIndex, noteCount: Int = chart.notes): BjmScore? =
+    scoreCandidateForChart(chart, index)?.takeIf { it.matchesChartNotes(noteCount) }
+
+internal fun hasUnmatchedScore(chart: IidxChart, index: BjmIndex, noteCount: Int = chart.notes): Boolean =
+    scoreCandidateForChart(chart, index)?.let { !it.matchesChartNotes(noteCount) } == true
+
+private fun scoreCandidateForChart(chart: IidxChart, index: BjmIndex): BjmScore? {
     val musicId = index.songMusicIds[songGroupKey(chart)] ?: return null
     return index.scoresByKey["$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"]
 }

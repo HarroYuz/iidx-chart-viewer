@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
+import com.harroyuz.iidxchartviewer.ui.history.formatBjmHistoryTime
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 import androidx.compose.foundation.horizontalScroll
@@ -48,6 +50,7 @@ import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
 import com.harroyuz.iidxchartviewer.ui.components.rankDeltaColor
 import com.harroyuz.iidxchartviewer.ui.components.rankDeltaText
+import com.harroyuz.iidxchartviewer.ui.components.hasUnmatchedScore
 import com.harroyuz.iidxchartviewer.ui.components.scoreForChart
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
 import com.harroyuz.iidxchartviewer.ui.theme.Muted
@@ -116,7 +119,9 @@ internal fun ChartDetailScreen(
                 }
                 Spacer(Modifier.width(10.dp))
                 ChartScoreSummary(
-                    score = scoreForChart(chart, bjmIndex),
+                    score = scoreForChart(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
+                    showTime = true,
+                    unmatchedScore = hasUnmatchedScore(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
                     noteCount = chartData?.chart?.notes ?: chart.notes,
                     modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
                 )
@@ -151,6 +156,8 @@ internal fun ChartScoreSummary(
     score: BjmScore?,
     noteCount: Int,
     modifier: Modifier = Modifier,
+    showTime: Boolean = false,
+    unmatchedScore: Boolean = false,
 ) {
     Column(
         modifier,
@@ -158,7 +165,7 @@ internal fun ChartScoreSummary(
         verticalArrangement = Arrangement.Bottom,
     ) {
         if (score == null) {
-            Text("NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(if (unmatchedScore) "成绩未匹配" else "NO PLAY", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StrokedText(
@@ -193,6 +200,12 @@ internal fun ChartScoreSummary(
                         Text(it, color = rankDeltaColor(it), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                     }
                 Text(")", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+            }
+            if (showTime) {
+                val date = remember(score.time) {
+                    formatBjmHistoryTime(score.time)
+                }
+                Text(date, color = Muted, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1)
             }
         }
     }

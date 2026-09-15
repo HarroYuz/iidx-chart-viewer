@@ -12,6 +12,8 @@ data class BjmScore(
     val exScore: Int,
     val option1: Long,
     val option2: Long,
+    val sourceNoteCount: Int? = null,
+    val sourceDjRate: String? = null,
 ) {
     val key: String get() = "$musicId:$playStyle:$noteId"
 }

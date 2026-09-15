@@ -20,7 +20,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Checkbox
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.MultiChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -440,61 +450,65 @@ internal fun ChartBrowserScreen(
                             )
                         }
                     }
-                    if (filterExpanded) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            SearchDimensionCheckbox(
-                                label = "曲风",
-                                checked = searchGenreEnabled,
-                                enabled = !searchGenreEnabled || selectedSearchDimensionCount > 1,
-                                onCheckedChange = { searchGenreEnabled = it },
-                                modifier = Modifier.weight(1f),
-                            )
-                            SearchDimensionCheckbox(
-                                label = "曲名",
-                                checked = searchTitleEnabled,
-                                enabled = !searchTitleEnabled || selectedSearchDimensionCount > 1,
-                                onCheckedChange = { searchTitleEnabled = it },
-                                modifier = Modifier.weight(1f),
-                            )
-                            SearchDimensionCheckbox(
-                                label = "曲师",
-                                checked = searchComposerEnabled,
-                                enabled = !searchComposerEnabled || selectedSearchDimensionCount > 1,
-                                onCheckedChange = { searchComposerEnabled = it },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FilterDropdown(
-                                value = selectedVersion ?: "全部版本",
-                                options = listOf("全部版本") + versionOptions,
-                                onSelect = { selectedVersion = it.takeUnless { option -> option == "全部版本" } },
-                                modifier = Modifier.weight(1f),
-                            )
-                            FilterDropdown(
-                                value = selectedLevel?.toString() ?: "全部等级",
-                                options = listOf("全部等级") + levelOptions.map(Int::toString),
-                                onSelect = { selectedLevel = it.toIntOrNull() },
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(
-                                onClick = {
-                                    selectedVersion = null
-                                    selectedLevel = null
-                                    searchGenreEnabled = true
-                                    searchTitleEnabled = true
-                                    searchComposerEnabled = true
-                                },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                            ) { Text("重置", color = Muted, fontSize = 11.sp) }
+                    AnimatedVisibility(
+                        visible = filterExpanded,
+                        enter = if (visualEffectsDisabled) EnterTransition.None else
+                            expandVertically(tween(180), expandFrom = Alignment.Top) + fadeIn(tween(120)),
+                        exit = if (visualEffectsDisabled) ExitTransition.None else
+                            shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
+                    ) {
+                        Column {
+                            MultiChoiceSegmentedButtonRow(
+                                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                            ) {
+                                listOf("曲风", "曲名", "曲师").forEachIndexed { index, label ->
+                                    val checked = when (index) {
+                                        0 -> searchGenreEnabled
+                                        1 -> searchTitleEnabled
+                                        else -> searchComposerEnabled
+                                    }
+                                    SegmentedButton(
+                                        checked = checked,
+                                        onCheckedChange = { value ->
+                                            // Keep the final selected search field active without dimming it.
+                                            if (value || selectedSearchDimensionCount > 1) when (index) {
+                                                0 -> searchGenreEnabled = value
+                                                1 -> searchTitleEnabled = value
+                                                else -> searchComposerEnabled = value
+                                            }
+                                        },
+                                        shape = SegmentedButtonDefaults.itemShape(index, 3),
+                                    ) { Text(label, fontSize = 12.sp) }
+                                }
+                            }
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                FilterDropdown(
+                                    value = selectedVersion ?: "全部版本",
+                                    options = listOf("全部版本") + versionOptions,
+                                    onSelect = { selectedVersion = it.takeUnless { option -> option == "全部版本" } },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                FilterDropdown(
+                                    value = selectedLevel?.toString() ?: "全部等级",
+                                    options = listOf("全部等级") + levelOptions.map(Int::toString),
+                                    onSelect = { selectedLevel = it.toIntOrNull() },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(
+                                    onClick = {
+                                        selectedVersion = null
+                                        selectedLevel = null
+                                        searchGenreEnabled = true
+                                        searchTitleEnabled = true
+                                        searchComposerEnabled = true
+                                    },
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                ) { Text("重置", color = Muted, fontSize = 11.sp) }
+                            }
                         }
                     }
                     val activeFilterSummary = buildString {
@@ -664,29 +678,3 @@ internal data class SongGroup(
     val sourceLabel: String,
     val charts: List<IidxChart>,
 )
-
-@Composable
-private fun SearchDimensionCheckbox(
-    label: String,
-    checked: Boolean,
-    enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            modifier = Modifier.size(28.dp),
-        )
-        Text(
-            label,
-            color = if (enabled || checked) Ink else Muted,
-            fontSize = 11.sp,
-        )
-    }
-}

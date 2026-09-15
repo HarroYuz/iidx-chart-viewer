@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui
 
+import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
@@ -75,6 +76,10 @@ internal fun IidxApp(
     state: IidxAppState,
     bjmHistory: List<BjmScore>,
     bjmIndex: BjmIndex,
+    chartMetadata: BjmChartMetadata?,
+    chartMetadataLoading: Boolean,
+    chartMetadataError: String?,
+    onRefreshChartMetadata: () -> Unit,
     localCatalogPresent: Boolean,
     textageSyncing: Boolean,
     textageProgress: TextageSyncProgress?,
@@ -316,6 +321,10 @@ internal fun IidxApp(
                                             .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
                                         SongDetailScreen(
                                             song = selectedSong,
+                                            chartMetadata = chartMetadata,
+                                            chartMetadataLoading = chartMetadataLoading,
+                                            chartMetadataError = chartMetadataError,
+                                            onRefreshChartMetadata = onRefreshChartMetadata,
                                             charts = family,
                                             bjmIndex = bjmIndex,
                                             mode = selectedSong.mode,
