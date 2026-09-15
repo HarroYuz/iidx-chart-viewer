@@ -37,6 +37,8 @@ import com.harroyuz.iidxchartviewer.ui.theme.Purple
 internal fun LocalDataLoadingScreen(
     progress: Float,
     stage: String,
+    visualEffectsDisabled: Boolean,
+    onDisableVisualEffects: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().padding(horizontal = 30.dp),
@@ -55,6 +57,10 @@ internal fun LocalDataLoadingScreen(
         )
         Spacer(Modifier.height(8.dp))
         Text("${(progress.coerceIn(0f, 1f) * 100).toInt()}%", color = NormalBlue, fontSize = 12.sp)
+        Spacer(Modifier.height(20.dp))
+        OutlinedButton(onClick = onDisableVisualEffects, enabled = !visualEffectsDisabled) {
+            Text(if (visualEffectsDisabled) "视觉效果已禁用" else "禁用视觉效果")
+        }
     }
 }
 

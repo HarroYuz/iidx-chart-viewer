@@ -60,56 +60,59 @@ internal fun SongDetailScreen(
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().browseSongSurface("song-surface:${songGroupKey(song)}").background(Background)) {
-        AppTopBar(title = "曲目信息", onNavigate = onBack) {
-            PlayStyleButton(mode, onStyleToggle)
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}", stableInDetails = true).padding(end = 12.dp)) {
-                AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
-                Spacer(Modifier.height(3.dp))
-                AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
-                if (song.subtitle.isNotBlank()) {
-                    AutoScrollingText(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.matchParentSize().browseSongSurface("song-surface:${songGroupKey(song)}").background(Background))
+        Column(Modifier.fillMaxSize()) {
+            AppTopBar(title = "曲目信息", onNavigate = onBack) {
+                PlayStyleButton(mode, onStyleToggle)
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}", stableInDetails = true).padding(end = 12.dp)) {
+                    AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
+                    Spacer(Modifier.height(3.dp))
+                    AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
+                    if (song.subtitle.isNotBlank()) {
+                        AutoScrollingText(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(song.composer) })
                 }
-                Spacer(Modifier.height(4.dp))
-                AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(song.composer) })
+                Column(horizontalAlignment = Alignment.End) {
+                    ChartVersionLabel(song.version, song.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(song)}", stableInDetails = true), detail = true)
+                    DetailStat("BPM ", song.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(song)}", stableInDetails = true))
+                }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                ChartVersionLabel(song.version, song.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(song)}", stableInDetails = true), detail = true)
-                DetailStat("BPM ", song.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(song)}", stableInDetails = true))
+            Spacer(Modifier.height(12.dp))
+            LazyColumn(
+                Modifier.fillMaxWidth().weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(charts, key = { it.id }) { chart ->
+                    DifficultyScoreCard(
+                        chart = chart,
+                        score = scoreForChart(chart, bjmIndex),
+                        unmatchedScore = hasUnmatchedScore(chart, bjmIndex),
+                        onOpenChart = onOpenChart,
+                    )
+                }
+                item(key = "radar") {
+                    ChartRadarPanel(
+                        songKey = songGroupKey(song),
+                        charts = charts,
+                        musicId = bjmIndex.songMusicIds[songGroupKey(song)],
+                        mode = mode,
+                        metadata = chartMetadata,
+                        loading = chartMetadataLoading,
+                        error = chartMetadataError,
+                        onRetry = onRefreshChartMetadata,
+                    )
+                }
+                item { Spacer(Modifier.height(18.dp)) }
             }
-        }
-        Spacer(Modifier.height(12.dp))
-        LazyColumn(
-            Modifier.fillMaxWidth().weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(charts, key = { it.id }) { chart ->
-                DifficultyScoreCard(
-                    chart = chart,
-                    score = scoreForChart(chart, bjmIndex),
-                    unmatchedScore = hasUnmatchedScore(chart, bjmIndex),
-                    onOpenChart = onOpenChart,
-                )
-            }
-            item(key = "radar") {
-                ChartRadarPanel(
-                    songKey = songGroupKey(song),
-                    charts = charts,
-                    musicId = bjmIndex.songMusicIds[songGroupKey(song)],
-                    mode = mode,
-                    metadata = chartMetadata,
-                    loading = chartMetadataLoading,
-                    error = chartMetadataError,
-                    onRetry = onRefreshChartMetadata,
-                )
-            }
-            item { Spacer(Modifier.height(18.dp)) }
         }
     }
 }

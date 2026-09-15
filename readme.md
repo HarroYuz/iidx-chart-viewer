@@ -1,6 +1,6 @@
 # IIDX 谱面浏览器
 
-当前版本：1.1.3
+当前版本：1.2.0
 
 一个纯 Android 的 beatmania IIDX 谱面浏览与本地播放器应用，使用 Kotlin 和 Jetpack Compose 实现。
 
@@ -23,7 +23,7 @@
 
 BJM 成绩接口没有独立的 DJ RATE 字段，其网站使用另一份 NOTE 数据库和 EX SCORE 计算等级。本应用保存这一参考 NOTE 数和计算等级，仅在参考 NOTE 数与目标谱面一致、EX SCORE 合法、DJ RATE 一致时展示成绩。缺少依据的旧成绩继续保留在历史记录中，同步到相同记录后补充依据。这个校验可排除 NOTE 数不同的版本，无法区分 NOTE 数相同但编排不同的谱面版本。
 
-Textage 当前街机版未收录的曲目在版本右侧统一显示红字“删除曲”，曲名保持普通颜色。曲目候选优先选可浏览的当前收录版本；成绩历史在 NOTE 数校验通过的候选中优先选当前收录版本。旧版可能缺少对应 BJM 成绩或雷达；无可用雷达时显示“暂无雷达数据”。
+Textage 当前街机版未收录的曲目在版本右侧统一显示红字“删除曲”，曲名保持普通颜色。筛选区可开启“不显示删除曲”，隐藏所有带此标记的谱面；重置筛选后恢复显示。曲目候选优先选可浏览的当前收录版本；成绩历史在 NOTE 数校验通过的候选中优先选当前收录版本。旧版可能缺少对应 BJM 成绩或雷达；无可用雷达时显示“暂无雷达数据”。
 
 ## 项目结构
 
@@ -70,6 +70,21 @@ android/app/build/outputs/apk/debug/app-debug.apk
 ```bash
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## 性能测试包
+
+判断动画性能请使用非 Debug 的优化包：
+
+```bash
+./gradlew -p android :app:assembleRelease
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+Release 启用 R8、资源压缩，并打包依赖库提供的 Baseline Profile（未生成应用专用 Profile，实际预编译时机由安装方式与 Android 系统决定）；有 `android/signing/` 时沿用现有签名，没有签名配置时生成未签名 APK。Debug 包继续用于开发和日志排查。基准测试应使用同一实机、同一数据与相同导航操作，分别记录冷启动和多次操作后的帧耗时。
+
+不在启动时预加载隐藏详情页或播放器。雷达绘图仅缓存当前组件的路径与文字布局；其他难度的磁盘缓存预解析延迟 750 毫秒开始，先检查缓存、串行处理最多两个难度，切换或返回时取消。低 RAM 设备、系统低内存、应用内存等级不足 128 MB 或可用内存不足 192 MiB 时跳过预解析。启动加载页也可直接禁用视觉效果，设置会保留到下次启动。
+
+排查记录与实机复测步骤见 [动画性能排查](docs/performance.md)。
 
 ## 固定签名
 

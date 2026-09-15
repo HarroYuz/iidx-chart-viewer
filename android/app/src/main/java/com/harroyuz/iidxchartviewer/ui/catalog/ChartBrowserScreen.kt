@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
@@ -38,6 +38,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilterChip
+import com.harroyuz.iidxchartviewer.domain.catalog.matchesCatalogFilters
+import com.harroyuz.iidxchartviewer.ui.motion.LocalBrowseMotion
+import com.harroyuz.iidxchartviewer.ui.motion.browseCatalogItem
+import com.harroyuz.iidxchartviewer.ui.motion.browseCatalogChrome
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -143,6 +148,7 @@ internal fun ChartBrowserScreen(
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
+    var hideDeleted by rememberSaveable { mutableStateOf(false) }
     var searchGenreEnabled by rememberSaveable { mutableStateOf(true) }
     var searchTitleEnabled by rememberSaveable { mutableStateOf(true) }
     var searchComposerEnabled by rememberSaveable { mutableStateOf(true) }
@@ -331,14 +337,14 @@ internal fun ChartBrowserScreen(
                     query,
                     selectedVersion,
                     selectedLevel,
+                    hideDeleted,
                     searchGenreEnabled,
                     searchTitleEnabled,
                     searchComposerEnabled,
                 ) {
                     allSongs.mapNotNull { song ->
                         val matchingCharts = song.charts.filter {
-                            (selectedVersion == null || it.version == selectedVersion) &&
-                                (selectedLevel == null || it.level == selectedLevel)
+                            it.matchesCatalogFilters(selectedVersion, selectedLevel, hideDeleted)
                         }
                         val searchText = buildList {
                             if (searchGenreEnabled) add(song.genre)
@@ -385,184 +391,201 @@ internal fun ChartBrowserScreen(
                     2 -> "搜索${searchDimensions.joinToString("或")}"
                     else -> "搜索${searchDimensions[0]}、${searchDimensions[1]}或${searchDimensions[2]}"
                 }
+                val movingSongKey = LocalBrowseMotion.current?.movingSongKey
+                val movingIndex = remember(songs, movingSongKey) { songs.indexOfFirst { it.key == movingSongKey } }
                 Column(modifier.fillMaxSize()) {
-                    AppTopBar(
-                        title = "曲库",
-                        onNavigate = { drawerScope.launch { drawerState.open() } },
-                        menu = true,
-                    ) {
-                        PlayStyleButton(mode) { onModeChange(if (mode == "SP") "DP" else "SP") }
-                        Spacer(Modifier.width(12.dp))
-                        val avatarText = state.bjmUser
-                            ?.let { (it.name.ifBlank { it.id }).firstOrNull()?.toString()?.uppercase() }
-                            ?: "○"
-                        Box(
-                            Modifier.size(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(if (state.bjmUser == null) Panel else Purple.copy(alpha = .18f))
-                                .clickable(onClick = onOpenBjmData),
-                            contentAlignment = Alignment.Center,
+                    Column(Modifier.browseCatalogChrome()) {
+                        AppTopBar(
+                            title = "曲库",
+                            onNavigate = { drawerScope.launch { drawerState.open() } },
+                            menu = true,
                         ) {
-                            if (state.bjmUser == null) {
-                                Canvas(Modifier.size(22.dp)) {
-                                    drawCircle(Muted, radius = size.minDimension * .16f, center = Offset(size.width / 2f, size.height * .28f))
-                                    drawRoundRect(
-                                        color = Muted,
-                                        topLeft = Offset(size.width * .18f, size.height * .55f),
-                                        size = Size(size.width * .64f, size.height * .32f),
-                                        cornerRadius = CornerRadius(size.width * .16f),
-                                    )
+                            PlayStyleButton(mode) { onModeChange(if (mode == "SP") "DP" else "SP") }
+                            Spacer(Modifier.width(12.dp))
+                            val avatarText = state.bjmUser
+                                ?.let { (it.name.ifBlank { it.id }).firstOrNull()?.toString()?.uppercase() }
+                                ?: "○"
+                            Box(
+                                Modifier.size(36.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(if (state.bjmUser == null) Panel else Purple.copy(alpha = .18f))
+                                    .clickable(onClick = onOpenBjmData),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (state.bjmUser == null) {
+                                    Canvas(Modifier.size(22.dp)) {
+                                        drawCircle(Muted, radius = size.minDimension * .16f, center = Offset(size.width / 2f, size.height * .28f))
+                                        drawRoundRect(
+                                            color = Muted,
+                                            topLeft = Offset(size.width * .18f, size.height * .55f),
+                                            size = Size(size.width * .64f, size.height * .32f),
+                                            cornerRadius = CornerRadius(size.width * .16f),
+                                        )
+                                    }
+                                } else {
+                                    Text(avatarText, color = Purple, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                                 }
-                            } else {
-                                Text(avatarText, color = Purple, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                    }
 
-                    if (textageProgress != null) TextageSyncBanner(textageProgress)
+                        if (textageProgress != null) TextageSyncBanner(textageProgress)
 
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text(searchPlaceholder, color = Muted) },
-                            shape = MaterialTheme.shapes.medium,
-                            singleLine = true,
-                            trailingIcon = {
-                                if (query.isNotEmpty()) {
-                                    IconButton(onClick = { query = "" }) {
-                                        Text("×", color = Muted, fontSize = 20.sp)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedTextField(
+                                value = query,
+                                onValueChange = { query = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text(searchPlaceholder, color = Muted) },
+                                shape = MaterialTheme.shapes.medium,
+                                singleLine = true,
+                                trailingIcon = {
+                                    if (query.isNotEmpty()) {
+                                        IconButton(onClick = { query = "" }) {
+                                            Text("×", color = Muted, fontSize = 20.sp)
+                                        }
+                                    }
+                                },
+                            )
+                            IconButton(onClick = { filterExpanded = !filterExpanded }) {
+                                FunnelIcon(
+                                    if (
+                                        filterExpanded ||
+                                        selectedVersion != null ||
+                                        selectedLevel != null ||
+                                        hideDeleted ||
+                                        selectedSearchDimensionCount < 3
+                                    ) Purple else Muted,
+                                )
+                            }
+                        }
+                        AnimatedVisibility(
+                            visible = filterExpanded,
+                            enter = if (visualEffectsDisabled) EnterTransition.None else
+                                expandVertically(tween(180), expandFrom = Alignment.Top) + fadeIn(tween(120)),
+                            exit = if (visualEffectsDisabled) ExitTransition.None else
+                                shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
+                        ) {
+                            Column {
+                                MultiChoiceSegmentedButtonRow(
+                                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                                ) {
+                                    listOf("曲风", "曲名", "曲师").forEachIndexed { index, label ->
+                                        val checked = when (index) {
+                                            0 -> searchGenreEnabled
+                                            1 -> searchTitleEnabled
+                                            else -> searchComposerEnabled
+                                        }
+                                        SegmentedButton(
+                                            checked = checked,
+                                            onCheckedChange = { value ->
+                                                // Keep the final selected search field active without dimming it.
+                                                if (value || selectedSearchDimensionCount > 1) when (index) {
+                                                    0 -> searchGenreEnabled = value
+                                                    1 -> searchTitleEnabled = value
+                                                    else -> searchComposerEnabled = value
+                                                }
+                                            },
+                                            shape = SegmentedButtonDefaults.itemShape(index, 3),
+                                        ) { Text(label, fontSize = 12.sp) }
                                     }
                                 }
-                            },
-                        )
-                        IconButton(onClick = { filterExpanded = !filterExpanded }) {
-                            FunnelIcon(
-                                if (
-                                    filterExpanded ||
-                                    selectedVersion != null ||
-                                    selectedLevel != null ||
-                                    selectedSearchDimensionCount < 3
-                                ) Purple else Muted,
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    FilterDropdown(
+                                        value = selectedVersion ?: "全部版本",
+                                        options = listOf("全部版本") + versionOptions,
+                                        onSelect = { selectedVersion = it.takeUnless { option -> option == "全部版本" } },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    FilterDropdown(
+                                        value = selectedLevel?.toString() ?: "全部等级",
+                                        options = listOf("全部等级") + levelOptions.map(Int::toString),
+                                        onSelect = { selectedLevel = it.toIntOrNull() },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(
+                                        onClick = {
+                                            selectedVersion = null
+                                            selectedLevel = null
+                                            hideDeleted = false
+                                            searchGenreEnabled = true
+                                            searchTitleEnabled = true
+                                            searchComposerEnabled = true
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                    ) { Text("重置", color = Muted, fontSize = 11.sp) }
+                                }
+                                FilterChip(
+                                    selected = hideDeleted,
+                                    onClick = { hideDeleted = !hideDeleted },
+                                    label = { Text("不显示删除曲", fontSize = 12.sp) },
+                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                )
+                            }
+                        }
+                        val activeFilterSummary = buildString {
+                            selectedVersion?.let { append(it) }
+                            selectedLevel?.let {
+                                if (isNotEmpty()) append("，")
+                                append("LEVEL $it")
+                            }
+                            if (hideDeleted) {
+                                if (isNotEmpty()) append("，")
+                                append("不显示删除曲")
+                            }
+                        }
+                        val collapsedFilterSummary = buildString {
+                            if (selectedSearchDimensionCount < 3) {
+                                append("仅筛选${searchDimensions.joinToString("/")}")
+                            }
+                            if (activeFilterSummary.isNotBlank()) {
+                                if (isNotEmpty()) append("，")
+                                append("已筛选：$activeFilterSummary")
+                            }
+                        }
+                        if (!filterExpanded && collapsedFilterSummary.isNotBlank()) {
+                            Text(
+                                collapsedFilterSummary,
+                                color = Muted,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 20.dp),
                             )
                         }
-                    }
-                    AnimatedVisibility(
-                        visible = filterExpanded,
-                        enter = if (visualEffectsDisabled) EnterTransition.None else
-                            expandVertically(tween(180), expandFrom = Alignment.Top) + fadeIn(tween(120)),
-                        exit = if (visualEffectsDisabled) ExitTransition.None else
-                            shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
-                    ) {
-                        Column {
-                            MultiChoiceSegmentedButtonRow(
-                                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
-                            ) {
-                                listOf("曲风", "曲名", "曲师").forEachIndexed { index, label ->
-                                    val checked = when (index) {
-                                        0 -> searchGenreEnabled
-                                        1 -> searchTitleEnabled
-                                        else -> searchComposerEnabled
-                                    }
-                                    SegmentedButton(
-                                        checked = checked,
-                                        onCheckedChange = { value ->
-                                            // Keep the final selected search field active without dimming it.
-                                            if (value || selectedSearchDimensionCount > 1) when (index) {
-                                                0 -> searchGenreEnabled = value
-                                                1 -> searchTitleEnabled = value
-                                                else -> searchComposerEnabled = value
-                                            }
-                                        },
-                                        shape = SegmentedButtonDefaults.itemShape(index, 3),
-                                    ) { Text(label, fontSize = 12.sp) }
-                                }
-                            }
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                FilterDropdown(
-                                    value = selectedVersion ?: "全部版本",
-                                    options = listOf("全部版本") + versionOptions,
-                                    onSelect = { selectedVersion = it.takeUnless { option -> option == "全部版本" } },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                FilterDropdown(
-                                    value = selectedLevel?.toString() ?: "全部等级",
-                                    options = listOf("全部等级") + levelOptions.map(Int::toString),
-                                    onSelect = { selectedLevel = it.toIntOrNull() },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(
-                                    onClick = {
-                                        selectedVersion = null
-                                        selectedLevel = null
-                                        searchGenreEnabled = true
-                                        searchTitleEnabled = true
-                                        searchComposerEnabled = true
-                                    },
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                                ) { Text("重置", color = Muted, fontSize = 11.sp) }
-                            }
-                        }
-                    }
-                    val activeFilterSummary = buildString {
-                        selectedVersion?.let { append(it) }
-                        selectedLevel?.let {
-                            if (isNotEmpty()) append("，")
-                            append("LEVEL $it")
-                        }
-                    }
-                    val collapsedFilterSummary = buildString {
-                        if (selectedSearchDimensionCount < 3) {
-                            append("仅筛选${searchDimensions.joinToString("/")}")
-                        }
-                        if (activeFilterSummary.isNotBlank()) {
-                            if (isNotEmpty()) append("，")
-                            append("已筛选：$activeFilterSummary")
-                        }
-                    }
-                    if (!filterExpanded && collapsedFilterSummary.isNotBlank()) {
                         Text(
-                            collapsedFilterSummary,
+                            "${songs.size} 首曲目 · $mode",
                             color = Muted,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 20.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                         )
                     }
-                    Text(
-                        "${songs.size} 首曲目 · $mode",
-                        color = Muted,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    )
                     if (songs.isEmpty()) {
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("没有找到匹配曲目", style = MaterialTheme.typography.titleMedium, color = Ink)
                                 Spacer(Modifier.height(8.dp))
                                 Text("试试其他关键词，或重置版本和等级筛选", style = MaterialTheme.typography.bodySmall, color = Muted)
-                                TextButton(onClick = { query = ""; selectedVersion = null; selectedLevel = null }) {
+                                TextButton(onClick = { query = ""; selectedVersion = null; selectedLevel = null; hideDeleted = false }) {
                                     Text("清除筛选")
                                 }
                             }
                         }
                     }
                     if (songs.isNotEmpty()) LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                        items(songs, key = { it.key }) { song ->
+                        itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
                             SongGroupRow(
                                 song = song,
                                 bjmIndex = bjmIndex,
                                 onOpenSong = onOpenSong,
                                 onOpenChart = onOpenChart,
                                 onCopyText = onCopyText,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 5.dp),
+                                modifier = Modifier.browseCatalogItem(song.key, aboveSelected = index < movingIndex)
+                                    .padding(horizontal = 18.dp, vertical = 5.dp),
                             )
                         }
                         item { Spacer(Modifier.height(18.dp)) }

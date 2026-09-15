@@ -7,13 +7,15 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.layout
 
 internal const val BROWSE_DURATION_MS = 240
 
@@ -71,18 +73,32 @@ internal fun Modifier.browseSongSurface(key: String): Modifier =
 internal fun Modifier.browseReveal(fromBottom: Boolean = false): Modifier {
     val motion = LocalBrowseMotion.current ?: return this
     val visibility = motion.visibility
-    val layer = if (fromBottom) {
-        with(motion.shared) { renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f) }
-    } else this
+    if (fromBottom) {
+        val offset = visibility.transition.animateFloat(
+            transitionSpec = { tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
+            label = "detail-reveal",
+        ) { if (it == EnterExitState.Visible) 0f else 1f }
+        return with(motion.shared) {
+            renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)
+                .layout { measurable, constraints ->
+                    val child = measurable.measure(constraints)
+                    layout(child.width, child.height) {
+                        if (isLookingAhead) {
+                            child.place(0, 0)
+                        } else {
+                            val top = coordinates?.let { lookaheadScopeCoordinates.localPositionOf(it, Offset.Zero).y } ?: 0f
+                            val distance = bottomRevealDistance(lookaheadScopeCoordinates.size.height.toFloat(), top)
+                            child.placeWithLayer(0, 0) { translationY = distance * offset.value }
+                        }
+                    }
+                }
+        }
+    }
     return with(visibility) {
-        layer.animateEnterExit(
-            enter = if (fromBottom) {
-                slideInVertically(tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing)) { it }
-            } else fadeIn(tween(147, delayMillis = 60)),
-            exit = if (fromBottom) {
-                slideOutVertically(tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing)) { it }
-            } else fadeOut(tween(120)),
-            label = if (fromBottom) "player-reveal" else "notes-reveal",
+        animateEnterExit(
+            enter = fadeIn(tween(147, delayMillis = 60)),
+            exit = fadeOut(tween(120)),
+            label = "notes-reveal",
         )
     }
 }
@@ -99,3 +115,46 @@ internal fun Modifier.keepSharedSize(): Modifier {
 internal class RetainedVisibilityScope(
     override val transition: Transition<EnterExitState>,
 ) : AnimatedVisibilityScope
+
+/** Other catalog cards enter as the selected card contracts; only its shared copy is drawn. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+internal fun Modifier.browseCatalogItem(key: String, aboveSelected: Boolean): Modifier {
+    val motion = LocalBrowseMotion.current ?: return this
+    if (motion.movingSongKey == null) return this
+    val visibility = motion.visibility.transition
+    if (motion.movingSongKey == key) {
+        return graphicsLayer {
+            alpha = if (visibility.isRunning || visibility.currentState != visibility.targetState) 0f else 1f
+        }
+    }
+    val offset = visibility.animateFloat(
+        transitionSpec = { tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
+        label = "catalog-neighbors",
+    ) { if (it == EnterExitState.Visible) 0f else 1f }
+    return with(motion.shared) {
+        layout { measurable, constraints ->
+            val child = measurable.measure(constraints)
+            layout(child.width, child.height) {
+                if (isLookingAhead) {
+                    child.place(0, 0)
+                } else {
+                    val top = coordinates?.let { lookaheadScopeCoordinates.localPositionOf(it, Offset.Zero).y } ?: 0f
+                    val distance = catalogRevealDistance(lookaheadScopeCoordinates.size.height.toFloat(), top, child.height.toFloat(), aboveSelected)
+                    child.placeWithLayer(0, 0) { translationY = distance * offset.value }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+internal fun Modifier.browseCatalogChrome(): Modifier {
+    val motion = LocalBrowseMotion.current ?: return this
+    val alpha = motion.visibility.transition.animateFloat(
+        transitionSpec = { tween(BROWSE_DURATION_MS, easing = FastOutSlowInEasing) },
+        label = "catalog-controls",
+    ) { if (it == EnterExitState.Visible) 1f else 0f }
+    return graphicsLayer { this.alpha = alpha.value }
+}

@@ -1,6 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -126,7 +127,7 @@ private fun RadarDiagram(radar: ChartRadar) {
     val accent = radarColor(radar.dominantAxis)
     val textMeasurer = rememberTextMeasurer()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Canvas(Modifier.weight(1f).height(188.dp)) {
+        Box(Modifier.weight(1f).height(188.dp).drawWithCache {
             val center = Offset(size.width / 2, size.height / 2)
             val radius = minOf(size.width, size.height) * .33f
             fun point(index: Int, scale: Float): Offset {
@@ -140,23 +141,30 @@ private fun RadarDiagram(radar: ChartRadar) {
                 }
                 close()
             }
-            for (step in 1..4) {
-                drawPath(polygon(List(6) { step / 4f }), Muted.copy(alpha = .18f), style = Stroke(1.dp.toPx()))
-            }
-            RadarAxis.entries.forEachIndexed { index, axis ->
-                drawLine(Muted.copy(alpha = .15f), center, point(index, 1f), 1.dp.toPx())
+            val grid = (1..4).map { step -> polygon(List(6) { step / 4f }) }
+            val endpoints = RadarAxis.entries.indices.map { point(it, 1f) }
+            val labels = RadarAxis.entries.mapIndexed { index, axis ->
                 val label = textMeasurer.measure(axis.label, TextStyle(
                     color = radarColor(axis), fontSize = 8.sp,
                     fontWeight = if (axis == radar.dominantAxis) FontWeight.Bold else FontWeight.Normal,
                 ))
-                val position = point(index, 1.32f)
-                drawText(label, topLeft = position - Offset(label.size.width / 2f, label.size.height / 2f))
+                label to (point(index, 1.32f) - Offset(label.size.width / 2f, label.size.height / 2f))
             }
             val values = radar.values.map { it / 200f }
-            drawPath(polygon(values), accent.copy(alpha = .20f))
-            drawPath(polygon(values), accent, style = Stroke(2.dp.toPx()))
-            values.forEachIndexed { index, value -> drawCircle(accent, 2.5.dp.toPx(), point(index, value)) }
-        }
+            val shape = polygon(values)
+            val vertices = values.mapIndexed { index, value -> point(index, value) }
+            val gridStroke = Stroke(1.dp.toPx())
+            val radarStroke = Stroke(2.dp.toPx())
+            val dotRadius = 2.5.dp.toPx()
+            onDrawBehind {
+                grid.forEach { drawPath(it, Muted.copy(alpha = .18f), style = gridStroke) }
+                endpoints.forEach { drawLine(Muted.copy(alpha = .15f), center, it, gridStroke.width) }
+                labels.forEach { (label, position) -> drawText(label, topLeft = position) }
+                drawPath(shape, accent.copy(alpha = .20f))
+                drawPath(shape, accent, style = radarStroke)
+                vertices.forEach { drawCircle(accent, dotRadius, it) }
+            }
+        })
         Row(Modifier.padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 RadarAxis.entries.forEach { axis ->

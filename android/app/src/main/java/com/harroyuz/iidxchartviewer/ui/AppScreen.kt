@@ -12,7 +12,6 @@ import com.harroyuz.iidxchartviewer.ui.components.RetainedPage
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.createChildTransition
 import androidx.compose.animation.core.ExperimentalTransitionApi
-import androidx.compose.ui.graphics.graphicsLayer
 import com.harroyuz.iidxchartviewer.ui.motion.RetainedVisibilityScope
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.tween
@@ -151,6 +150,8 @@ internal fun IidxApp(
                 LocalDataLoadingScreen(
                     progress = localDataProgress,
                     stage = localDataStage,
+                    visualEffectsDisabled = visualEffectsDisabled,
+                    onDisableVisualEffects = { onVisualEffectsDisabledChange(true) },
                 )
             } else if (showingBootstrap) {
                 TextageBootstrapScreen(
@@ -185,7 +186,6 @@ internal fun IidxApp(
                         RetainedPage(
                             visible = browserParticipating,
                             interactive = browserAtRest,
-                            modifier = Modifier.graphicsLayer { alpha = if (browserAtRest) 1f else 0f },
                         ) {
                             ChartBrowserScreen(
                                 state = state,

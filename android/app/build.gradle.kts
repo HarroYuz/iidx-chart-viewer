@@ -21,8 +21,8 @@ android {
         applicationId = "com.harroyuz.iidxchartviewer"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.1.3"
+        versionCode = 18
+        versionName = "1.2.0"
     }
 
     signingConfigs {
@@ -37,6 +37,12 @@ android {
     }
 
     buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (sharedSigning != null) signingConfig = signingConfigs.getByName("sharedDebug")
+        }
         getByName("debug") {
             if (sharedSigning != null) signingConfig = signingConfigs.getByName("sharedDebug")
         }

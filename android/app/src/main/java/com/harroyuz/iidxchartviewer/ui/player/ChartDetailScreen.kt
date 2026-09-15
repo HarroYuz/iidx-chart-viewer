@@ -74,79 +74,82 @@ internal fun ChartDetailScreen(
     onCopyText: (String) -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().browseSongSurface("song-surface:${songGroupKey(chart)}").background(Background)) {
-        AppTopBar(title = "谱面浏览", onNavigate = onBack) {
-            PlayStyleButton(mode, onStyleToggle)
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}", stableInDetails = true).padding(end = 12.dp)) {
-                AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
-                Spacer(Modifier.height(3.dp))
-                AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
-                if (chart.subtitle.isNotBlank()) {
-                    AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.matchParentSize().browseSongSurface("song-surface:${songGroupKey(chart)}").background(Background))
+        Column(Modifier.fillMaxSize()) {
+            AppTopBar(title = "谱面浏览", onNavigate = onBack) {
+                PlayStyleButton(mode, onStyleToggle)
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}", stableInDetails = true).padding(end = 12.dp)) {
+                    AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
+                    Spacer(Modifier.height(3.dp))
+                    AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
+                    if (chart.subtitle.isNotBlank()) {
+                        AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(chart.composer) })
                 }
-                Spacer(Modifier.height(4.dp))
-                AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(chart.composer) })
+                Column(horizontalAlignment = Alignment.End) {
+                    ChartVersionLabel(chart.version, chart.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(chart)}", stableInDetails = true), detail = true)
+                    DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(chart)}", stableInDetails = true))
+                    DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—", Modifier.browseReveal())
+                }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                ChartVersionLabel(chart.version, chart.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(chart)}", stableInDetails = true), detail = true)
-                DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(chart)}", stableInDetails = true))
-                DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—", Modifier.browseReveal())
-            }
-        }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
-                        color = difficultyColor(chart.difficulty),
-                        fontSize = 10.sp,
-                        letterSpacing = .8.sp,
-                    )
-                    Spacer(Modifier.height(7.dp))
-                    Row(
-                        Modifier.fillMaxWidth().height(34.dp).horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Bottom,
-                    ) {
-                        siblingCharts.forEach { sibling ->
-                            DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id, sharedDifficulty = true)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
+                            color = difficultyColor(chart.difficulty),
+                            fontSize = 10.sp,
+                            letterSpacing = .8.sp,
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        Row(
+                            Modifier.fillMaxWidth().height(34.dp).horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            siblingCharts.forEach { sibling ->
+                                DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id, sharedDifficulty = true)
+                            }
                         }
                     }
+                    Spacer(Modifier.width(10.dp))
+                    ChartScoreSummary(
+                        score = scoreForChart(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
+                        showTime = true,
+                        unmatchedScore = hasUnmatchedScore(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
+                        noteCount = chartData?.chart?.notes ?: chart.notes,
+                        modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
+                    )
                 }
-                Spacer(Modifier.width(10.dp))
-                ChartScoreSummary(
-                    score = scoreForChart(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
-                    showTime = true,
-                    unmatchedScore = hasUnmatchedScore(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
-                    noteCount = chartData?.chart?.notes ?: chart.notes,
-                    modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
-                )
             }
-        }
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        Box(Modifier.fillMaxWidth().weight(1f).browseReveal(fromBottom = true).background(Background)) {
-            when {
-                loading -> Box(Modifier.fillMaxWidth().height(520.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Purple)
-                        Spacer(Modifier.height(12.dp))
-                        Text("正在获取并解析 Textage…", color = Muted, fontSize = 12.sp)
+            Box(Modifier.fillMaxWidth().weight(1f).browseReveal(fromBottom = true).background(Background)) {
+                when {
+                    loading -> Box(Modifier.fillMaxWidth().height(520.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Purple)
+                            Spacer(Modifier.height(12.dp))
+                            Text("正在获取并解析 Textage…", color = Muted, fontSize = 12.sp)
+                        }
                     }
+                    chartData == null -> ChartLoadError(onRetry)
+                    chartData.notes.isEmpty() -> ChartParseWarning(chartData.parserMessage ?: "没有可显示的时序数据。", onRetry)
+                    else -> ChartPlayer(
+                        data = chartData,
+                        settings = playerSettings,
+                        onSettingsChange = onPlayerSettingsChange,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
-                chartData == null -> ChartLoadError(onRetry)
-                chartData.notes.isEmpty() -> ChartParseWarning(chartData.parserMessage ?: "没有可显示的时序数据。", onRetry)
-                else -> ChartPlayer(
-                    data = chartData,
-                    settings = playerSettings,
-                    onSettingsChange = onPlayerSettingsChange,
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
         }
     }

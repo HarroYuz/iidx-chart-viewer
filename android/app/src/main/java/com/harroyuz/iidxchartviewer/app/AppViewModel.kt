@@ -2,6 +2,7 @@ package com.harroyuz.iidxchartviewer.app
 
 import com.harroyuz.iidxchartviewer.data.remote.bjm.BjmChartMetadataRepository
 import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
+import android.app.ActivityManager
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -29,6 +30,10 @@ import com.harroyuz.iidxchartviewer.domain.model.IidxAppState
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.domain.model.TextageChartData
 import com.harroyuz.iidxchartviewer.domain.model.TextageSyncProgress
+import com.harroyuz.iidxchartviewer.domain.player.canPrefetchCharts
+import com.harroyuz.iidxchartviewer.domain.player.CHART_PREFETCH_LIMIT
+import com.harroyuz.iidxchartviewer.domain.player.CHART_PREFETCH_DELAY_MS
+import com.harroyuz.iidxchartviewer.domain.catalog.difficultyOrder
 import com.harroyuz.iidxchartviewer.domain.player.PlayerSettings
 import com.harroyuz.iidxchartviewer.domain.score.withNoteReference
 import com.harroyuz.iidxchartviewer.domain.score.appendBjmHistory
@@ -42,6 +47,8 @@ import com.harroyuz.iidxchartviewer.domain.sync.isSameLocalDate
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -101,6 +108,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         private set
     internal var chartLoading by mutableStateOf(false)
         private set
+    private var chartWarmupJob: Job? = null
     private var chartLoadJob: Job? = null
     private var chartLoadRequest = 0L
     private var browseSelection by mutableStateOf(BrowseSelection())
@@ -680,6 +688,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     internal fun openChart(chart: IidxChart) {
+        chartWarmupJob?.cancel()
         val request = ++chartLoadRequest
         chartLoadJob?.cancel()
         val replacingPlayer = selectedChart != null && selectedChartData?.notes?.isNotEmpty() == true
@@ -716,7 +725,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                     .filter { it.id != chart.id && it.textageUrl != null }
                 if (siblings.isNotEmpty()) {
                     val page = fetchedPage
-                    viewModelScope.launch(Dispatchers.IO) {
+                    chartWarmupJob = viewModelScope.launch(Dispatchers.IO) {
+                        delay(CHART_PREFETCH_DELAY_MS)
                         warmChartFamily(chart, siblings, page)
                     }
                 }
@@ -747,25 +757,41 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
         siblings: List<IidxChart>,
         initialPage: TextageChartPage?,
     ) {
-        val page = initialPage ?: runCatching {
-            textageClient.fetchChartPage(selectedChart)
-        }.getOrNull() ?: return
-        siblings.forEach { sibling ->
+        if (!hasChartPrefetchHeadroom()) return
+        // Check disk first: an already cached family needs no network request or JS parsing.
+        val missing = siblings.sortedBy {
+            kotlin.math.abs(difficultyOrder(it.difficulty) - difficultyOrder(selectedChart.difficulty))
+        }.filter { sibling ->
+            coroutineContext.ensureActive()
             val cached = runCatching { store.loadChartData(sibling) }.getOrNull()
-            val usableCached = cached?.takeIf { cachedData ->
-                cachedData.parsed && (sibling.notes <= 0 || cachedData.chart.notes == sibling.notes)
+            cached == null || !cached.parsed || (sibling.notes > 0 && cached.chart.notes != sibling.notes)
+        }.take(CHART_PREFETCH_LIMIT)
+        if (missing.isEmpty()) return
+        try {
+            val page = initialPage ?: textageClient.fetchChartPage(selectedChart)
+            for (sibling in missing) {
+                coroutineContext.ensureActive()
+                if (!hasChartPrefetchHeadroom()) return
+                val parsed = textageClient.parseChart(page, sibling)
+                coroutineContext.ensureActive()
+                store.saveChartData(parsed)
             }
-            if (usableCached == null) {
-                runCatching {
-                    textageClient.parseChart(page, sibling)
-                }.onSuccess { parsed ->
-                    runCatching { store.saveChartData(parsed) }
-                }
-            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            // Optional work: the selected chart is ready and other difficulties can load on demand.
         }
     }
 
+    private fun hasChartPrefetchHeadroom(): Boolean {
+        val manager = getApplication<Application>().getSystemService(ActivityManager::class.java)
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        return canPrefetchCharts(manager.isLowRamDevice, info.lowMemory, manager.memoryClass, info.availMem)
+    }
+
     private fun cancelChartLoad() {
+        chartWarmupJob?.cancel()
+        chartWarmupJob = null
         chartLoadRequest++
         chartLoadJob?.cancel()
         chartLoadJob = null
