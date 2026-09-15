@@ -1,5 +1,9 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.ui.components.RemovedSongColor
+import com.harroyuz.iidxchartviewer.ui.components.arcadeStatusLabel
+import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
+import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,7 +89,7 @@ private fun SongGroupContent(
     onCopyText: (String) -> Unit,
     modifier: Modifier,
 ) {
-    val representative = song.charts.firstOrNull()
+    val representative = song.charts.maxWithOrNull(preferredChartOrder)
     Column(
         modifier.fillMaxWidth()
             .browseSharedBounds(representative?.let { "song-surface:${songGroupKey(it)}" })
@@ -106,7 +110,10 @@ private fun SongGroupContent(
                     onCopy = onCopyText,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(displayTitle(song.title, song.sourceLabel), color = songTitleColor(representative?.arcadeStatus), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                representative?.arcadeStatus?.takeIf { it.isUnavailable }?.let { status ->
+                    Text(arcadeStatusLabel(status), color = RemovedSongColor, fontSize = 10.sp)
+                }
                 if (song.subtitle.isNotBlank()) {
                     Text(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

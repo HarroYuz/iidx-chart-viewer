@@ -1,6 +1,8 @@
 package com.harroyuz.iidxchartviewer.data.remote.textage
 
+import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import com.harroyuz.iidxchartviewer.R
+import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
 import com.harroyuz.iidxchartviewer.domain.model.BpmChange
 import com.harroyuz.iidxchartviewer.domain.model.ChartNote
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
@@ -64,6 +66,7 @@ internal object TextageParser {
         val noteEntries = parseObjectEntries(source, "datatbl").associateBy { it.first }
         val constants = parseNumericConstants(source)
         val arcadeLevelEntries = parseObjectEntries(source, "actbl")
+        val arcadeFlags = arcadeLevelEntries.associate { (key, values) -> key to values.firstOrNull()?.intValue(constants) }
         val sourceLabels = arcadeLevelEntries.associate { (key, values) ->
             key to values.getOrNull(TEXTAGE_SOURCE_LABEL_INDEX)?.text.orEmpty().let(::cleanJsText)
         }
@@ -92,6 +95,14 @@ internal object TextageParser {
             val notes = noteEntries[key]?.second.orEmpty()
             val levels = levelEntries[key].orEmpty()
             val sourceLabel = sourceLabels[key].orEmpty()
+            // Use the AC table before merging CS difficulty levels: CS flags have different semantics.
+            val arcadeStatus = when {
+                arcadeFlags[key] == null -> ArcadeStatus.UNKNOWN
+                arcadeFlags.getValue(key)!! and 1 != 0 -> ArcadeStatus.CURRENT
+                versionIndex == 0 || sourceLabel.startsWith("(CS", ignoreCase = true) ||
+                    sourceLabel.startsWith("(US beatmania", ignoreCase = true) -> ArcadeStatus.CONSUMER_ONLY
+                else -> ArcadeStatus.DELETED
+            }
             val bpm = notes.lastOrNull()?.text.orEmpty().let(::cleanJsText)
             // Version 0 is a real Textage directory (for example
             // /score/0/chocopla.html), not a missing-version marker. A chart
@@ -120,6 +131,7 @@ internal object TextageParser {
                     notes = noteCount,
                     version = version,
                     sourceLabel = sourceLabel,
+                    arcadeStatus = arcadeStatus,
                     textageUrl = chartBaseUrl.takeIf { noteCount > 0 },
                 )
             }
@@ -130,7 +142,7 @@ internal object TextageParser {
         // the entry with a usable page and the richer metadata.
         return result.groupBy { it.id }.values.map { candidates ->
             candidates.maxWithOrNull(
-                compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                preferredChartOrder,
             ) ?: candidates.first()
         }
     }

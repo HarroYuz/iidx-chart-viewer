@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.domain.score
 
+import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
+import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 
 /** Actual DJ RATE, not the nearest target rank used by the score delta UI. */
@@ -21,3 +23,10 @@ internal fun BjmScore.withNoteReference(noteCount: Int?): BjmScore = copy(
     sourceNoteCount = noteCount?.takeIf { it > 0 },
     sourceDjRate = noteCount?.let { djRate(exScore, it) },
 )
+
+internal fun preferredChartForScore(
+    score: BjmScore,
+    candidates: List<IidxChart>,
+): IidxChart? = candidates
+    .filter { score.matchesChartNotes(it.notes) }
+    .maxWithOrNull(preferredChartOrder)

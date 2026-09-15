@@ -46,9 +46,13 @@ private fun normalizeMusicTitle(value: String): String =
         .lowercase(Locale.ROOT)
         .replace(MusicTitleFilterRegex, "")
 
+internal val preferredChartOrder: Comparator<IidxChart> = compareBy<IidxChart>(
+    { it.textageUrl != null }, { it.arcadeStatus.priority }, { it.notes }, { it.bpm.isNotBlank() },
+)
+
 internal fun buildSongGroups(charts: List<IidxChart>): List<IidxSongGroup> =
     charts.groupBy(::songGroupKey).map { (key, group) ->
-        val first = group.first()
+        val first = group.maxWithOrNull(preferredChartOrder) ?: group.first()
         IidxSongGroup(
             key = key,
             title = first.title,

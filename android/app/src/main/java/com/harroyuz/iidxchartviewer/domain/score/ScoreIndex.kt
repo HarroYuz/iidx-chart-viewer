@@ -13,7 +13,7 @@ private fun buildSongMusicIds(state: IidxAppState): Map<String, Int> {
     return state.songGroups.asSequence().mapNotNull { songGroup ->
             val songCharts = songGroup.chartIds.mapNotNull { chartId -> chartsById[chartId] }
             val representative = songCharts.minWithOrNull(
-                compareBy<IidxChart>({ it.textageUrl == null }, { it.level <= 0 }, { difficultyOrder(it.difficulty) }),
+                compareBy<IidxChart>({ it.textageUrl == null }, { -it.arcadeStatus.priority }, { it.level <= 0 }, { difficultyOrder(it.difficulty) }),
             ) ?: return@mapNotNull null
             findBjmMusic(representative, musicIndex)?.musicId?.let { musicId -> songGroup.key to musicId }
         }

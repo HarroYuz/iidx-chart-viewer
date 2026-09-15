@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
+import com.harroyuz.iidxchartviewer.ui.components.ArcadeStatusNotice
 import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,7 +72,7 @@ internal fun SongDetailScreen(
             Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}", stableInDetails = true).padding(end = 12.dp)) {
                 AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
                 Spacer(Modifier.height(3.dp))
-                AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
+                AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = songTitleColor(song.arcadeStatus), fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
                 if (song.subtitle.isNotBlank()) {
                     AutoScrollingText(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                 }
@@ -82,6 +84,7 @@ internal fun SongDetailScreen(
                 DetailStat("BPM ", song.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(song)}", stableInDetails = true))
             }
         }
+        ArcadeStatusNotice(song.arcadeStatus, Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
         Spacer(Modifier.height(12.dp))
         LazyColumn(
             Modifier.fillMaxWidth().weight(1f),

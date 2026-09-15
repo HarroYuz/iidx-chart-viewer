@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui
 
+import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -269,7 +270,7 @@ internal fun IidxApp(
                                             .values
                                             .mapNotNull { sameDifficulty ->
                                                 sameDifficulty.maxWithOrNull(
-                                                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                                                    preferredChartOrder,
                                                 )
                                             }
                                             .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
@@ -291,7 +292,7 @@ internal fun IidxApp(
                                                             it.textageUrl != null
                                                     }
                                                     .maxWithOrNull(
-                                                        compareBy<IidxChart>({ difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
+                                                        compareBy<IidxChart>({ it.arcadeStatus.priority }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
                                                     )
                                                 if (alternate != null) {
                                                     browserMode = targetMode
@@ -315,7 +316,7 @@ internal fun IidxApp(
                                             .values
                                             .mapNotNull { sameDifficulty ->
                                                 sameDifficulty.maxWithOrNull(
-                                                    compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                                                    preferredChartOrder,
                                                 )
                                             }
                                             .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
@@ -336,7 +337,7 @@ internal fun IidxApp(
                                                         it.mode == targetMode
                                                     }
                                                     .maxWithOrNull(
-                                                        compareBy<IidxChart>({ it.textageUrl != null }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
+                                                        compareBy<IidxChart>({ it.textageUrl != null }, { it.arcadeStatus.priority }, { difficultyOrder(it.difficulty) }, { it.level }, { it.notes }),
                                                     )
                                                 if (alternate != null) {
                                                     browserMode = targetMode

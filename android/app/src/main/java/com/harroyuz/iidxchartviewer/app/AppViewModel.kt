@@ -555,6 +555,11 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
             val songGroups = withContext(Dispatchers.Default) {
                 buildSongGroups(merged)
             }
+            val refreshedCharts = merged.associateBy { it.id }
+            browseSelection = browseSelection.copy(
+                song = selectedSong?.let { refreshedCharts[it.id] ?: it },
+                chart = selectedChart?.let { refreshedCharts[it.id] ?: it },
+            )
             val nextState = appState.copy(charts = merged, songGroups = songGroups)
             appState = nextState
             val textageRevision = System.currentTimeMillis()

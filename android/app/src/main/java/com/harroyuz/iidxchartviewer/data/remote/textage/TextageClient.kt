@@ -22,6 +22,10 @@ class TextageClient {
         val scripts = TextageParser.scriptUrls(html, catalogUrl).mapNotNull { url ->
             runCatching { url to getHtmlWithRetry(url) }.getOrNull()
         }
+        val requiredTables = listOf("titletbl.js", "actbl.js", "datatbl.js")
+        if (requiredTables.any { name -> scripts.none { (url, source) ->
+                URL(url).path.substringAfterLast('/') == name && source.isNotBlank()
+            } }) throw TextageException("Textage 关键曲库数据未下载完整，请稍后重试")
         val result = TextageParser.parseCatalog(scripts.joinToString("\n") { it.second }, onProgress)
         if (result.size < 7_000) {
             throw TextageException("Textage 元数据不完整（仅识别到 ${result.size} 张谱面），请稍后重试")

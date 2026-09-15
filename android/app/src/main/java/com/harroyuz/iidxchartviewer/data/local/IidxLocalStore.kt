@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.data.local
 
+import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
+import android.util.AtomicFile
 import android.content.Context
 import android.util.Base64
 import com.harroyuz.iidxchartviewer.domain.model.BjmIndex
@@ -25,8 +27,8 @@ class IidxLocalStore(context: Context) {
         // Increment when chart timing/position decoding changes so old
         // parsed charts are refreshed automatically on first access.
         const val CHART_CACHE_VERSION = 11
-        const val CATALOG_HEADER = "#iidx-catalog-v3"
-        const val TEXTAGE_CATALOG_PARSER_VERSION = 4
+        const val CATALOG_HEADER = "#iidx-catalog-v4"
+        const val TEXTAGE_CATALOG_PARSER_VERSION = 5
         const val BJM_INDEX_VERSION = 2
         const val SONG_GROUPS_VERSION = 1
     }
@@ -466,12 +468,13 @@ class IidxLocalStore(context: Context) {
         chartCacheDirectory.listFiles()?.forEach { file -> file.deleteRecursively() }
     }
 
-    private fun readCatalogFile(): List<IidxChart> = catalogFile.useLines { lines ->
+    @Synchronized
+    private fun readCatalogFile(): List<IidxChart> = AtomicFile(catalogFile).openRead().bufferedReader().useLines { lines ->
         val allLines = lines.toList()
-        val compact = allLines.firstOrNull() == CATALOG_HEADER
+        val compact = allLines.firstOrNull() in setOf(CATALOG_HEADER, "#iidx-catalog-v3")
         allLines.drop(if (compact) 1 else 0).mapNotNull { line ->
             val values = line.split('\t')
-            if (values.size !in 14..15) return@mapNotNull null
+            if (values.size !in 14..16) return@mapNotNull null
             runCatching {
                 val text = if (compact) ::unescapeField else ::decodeField
                 val number = if (compact) String::toInt else ::decodeIntField
@@ -488,6 +491,7 @@ class IidxLocalStore(context: Context) {
                     level = number(values[8]),
                     notes = number(values[9]),
                     version = version,
+                    arcadeStatus = ArcadeStatus.fromStored(values.getOrNull(15)),
                     sourceLabel = values.getOrNull(14)?.takeIf { it.isNotEmpty() }?.let(text).orEmpty(),
                     score = values[11].takeIf { it.isNotEmpty() }?.let(number),
                     confirmed = number(values[12]) == 1,
@@ -497,8 +501,12 @@ class IidxLocalStore(context: Context) {
         }.toList()
     }
 
+    @Synchronized
     private fun writeCatalogFile(charts: List<IidxChart>) {
-        catalogFile.bufferedWriter(Charsets.UTF_8).use { writer ->
+        val atomic = AtomicFile(catalogFile)
+        val output = atomic.startWrite()
+        try {
+            val writer = output.bufferedWriter(Charsets.UTF_8)
             writer.append(CATALOG_HEADER)
             writer.newLine()
             charts.filterNot { it.id.startsWith("demo-") }.forEachIndexed { index, chart ->
@@ -520,9 +528,15 @@ class IidxLocalStore(context: Context) {
                         if (chart.confirmed) "1" else "0",
                         chart.textageUrl?.let(::escapeField).orEmpty(),
                         escapeField(chart.sourceLabel),
+                        chart.arcadeStatus.name,
                     ).joinToString("\t"),
                 )
             }
+            writer.flush()
+            atomic.finishWrite(output)
+        } catch (error: Exception) {
+            atomic.failWrite(output)
+            throw error
         }
     }
 

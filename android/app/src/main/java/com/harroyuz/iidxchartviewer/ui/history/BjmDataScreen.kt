@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.history
 
+import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,7 +51,7 @@ import com.harroyuz.iidxchartviewer.ui.components.clearFlagColor
 import com.harroyuz.iidxchartviewer.ui.components.clearFlagDetailName
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
-import com.harroyuz.iidxchartviewer.domain.score.matchesChartNotes
+import com.harroyuz.iidxchartviewer.domain.score.preferredChartForScore
 import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
@@ -91,7 +92,7 @@ internal fun BjmDataScreen(
     val filteredHistory = remember(history, query, selectedDate, historyCharts, musicById) {
         val normalizedQuery = query.trim()
         history.filter { record ->
-            val chart = historyCharts[record.key]?.firstOrNull { record.matchesChartNotes(it.notes) }
+            val chart = preferredChartForScore(record, historyCharts[record.key].orEmpty())
             val music = musicById[record.musicId]
             val matchesQuery = normalizedQuery.isBlank() || listOf(
                 chart?.title,
@@ -203,7 +204,7 @@ internal fun BjmDataScreen(
                         items(filteredHistory, key = ::bjmHistoryRecordKey) { record ->
                             BjmHistoryRow(
                                 record = record,
-                                chart = historyCharts[record.key]?.firstOrNull { record.matchesChartNotes(it.notes) },
+                                chart = preferredChartForScore(record, historyCharts[record.key].orEmpty()),
                                 music = musicById[record.musicId],
                                 onOpenSong = onOpenSong,
                             )
@@ -259,7 +260,7 @@ private fun BjmHistoryRow(
                 verticalArrangement = if (subtitle == null) Arrangement.SpaceBetween else Arrangement.Top,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    AutoScrollingText(title, color = Ink, fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold)
+                    AutoScrollingText(title, color = songTitleColor(chart?.arcadeStatus), fontSize = 14.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold)
                     subtitle?.let {
                         AutoScrollingText(it, color = Muted, fontSize = 10.sp, lineHeight = 11.sp)
                     }
@@ -308,9 +309,7 @@ private fun buildBjmHistoryChartIndex(
                 "$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"
             }
             .forEach { (key, candidates) ->
-                put(key, (get(key).orEmpty() + candidates).distinctBy { it.id }.sortedWith(
-                    compareByDescending<IidxChart> { it.textageUrl != null }.thenByDescending { it.notes },
-                ))
+                put(key, (get(key).orEmpty() + candidates).distinctBy { it.id })
             }
     }
 }

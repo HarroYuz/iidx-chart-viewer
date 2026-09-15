@@ -207,6 +207,7 @@ class TextageClientTest {
         val chart = charts.first { it.mode == "SP" && it.difficulty == "A" }
 
         assertEquals("(CS8th)", chart.sourceLabel)
+        assertEquals(com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus.CONSUMER_ONLY, chart.arcadeStatus)
         assertEquals("substream", chart.version)
         assertTrue(chart.textageUrl!!.startsWith("https://textage.cc/score/s/thearth8.html"))
     }

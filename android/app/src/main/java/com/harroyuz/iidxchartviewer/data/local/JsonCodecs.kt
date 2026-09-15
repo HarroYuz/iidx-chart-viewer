@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.data.local
 
+import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
 import com.harroyuz.iidxchartviewer.domain.model.BjmMusic
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
@@ -23,6 +24,7 @@ internal fun IidxChart.toJson() = JSONObject().apply {
     put("score", score ?: JSONObject.NULL)
     put("confirmed", confirmed)
     put("textage_url", textageUrl ?: JSONObject.NULL)
+    put("arcade_status", arcadeStatus.name)
 }
 
 internal fun JSONObject.toChart(): IidxChart {
@@ -40,6 +42,7 @@ internal fun JSONObject.toChart(): IidxChart {
     notes = optInt("notes"),
     version = version,
     sourceLabel = optString("source_label"),
+    arcadeStatus = ArcadeStatus.fromStored(optString("arcade_status")),
     score = if (isNull("score")) null else optInt("score"),
     confirmed = optBoolean("confirmed"),
     textageUrl = if (isNull("textage_url")) null else optString("textage_url")

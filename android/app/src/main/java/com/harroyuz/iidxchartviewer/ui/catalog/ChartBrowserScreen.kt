@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import com.harroyuz.iidxchartviewer.ui.components.RetainedPage
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -361,7 +362,7 @@ internal fun ChartBrowserScreen(
                                     .values
                                     .map { sameDifficulty ->
                                         sameDifficulty.maxWithOrNull(
-                                            compareBy<IidxChart>({ it.textageUrl != null }, { it.notes }, { it.bpm.isNotBlank() }),
+                                            preferredChartOrder,
                                         ) ?: sameDifficulty.first()
                                     }
                                     .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level }),

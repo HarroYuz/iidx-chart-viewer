@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
+import com.harroyuz.iidxchartviewer.ui.components.songTitleColor
+import com.harroyuz.iidxchartviewer.ui.components.ArcadeStatusNotice
 import com.harroyuz.iidxchartviewer.ui.history.formatBjmHistoryTime
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
@@ -84,7 +86,7 @@ internal fun ChartDetailScreen(
             Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}", stableInDetails = true).padding(end = 12.dp)) {
                 AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
                 Spacer(Modifier.height(3.dp))
-                AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
+                AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = songTitleColor(chart.arcadeStatus), fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
                 if (chart.subtitle.isNotBlank()) {
                     AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                 }
@@ -97,6 +99,7 @@ internal fun ChartDetailScreen(
                 DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—", Modifier.browseReveal())
             }
         }
+        ArcadeStatusNotice(chart.arcadeStatus, Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
