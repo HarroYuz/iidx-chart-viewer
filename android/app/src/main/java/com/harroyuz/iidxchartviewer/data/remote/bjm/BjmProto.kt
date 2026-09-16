@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.data.remote.bjm
 
+import com.harroyuz.iidxchartviewer.data.text.decodeHtmlEntities
 import com.harroyuz.iidxchartviewer.domain.model.BjmMusic
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import java.io.ByteArrayOutputStream
@@ -170,7 +171,10 @@ internal object BjmMusicProto {
                 throw BjmException("音乐字段 field=$field wire=$wireType position=${reader.position()}", error)
             }
         }
-        return BjmMusic(musicId, title, plainTitle, genre, artist, version, levels)
+        return BjmMusic(
+            musicId, decodeHtmlEntities(title), decodeHtmlEntities(plainTitle),
+            decodeHtmlEntities(genre), decodeHtmlEntities(artist), version, levels,
+        )
     }
 
     private class MusicProtoReader(private val bytes: ByteArray) {

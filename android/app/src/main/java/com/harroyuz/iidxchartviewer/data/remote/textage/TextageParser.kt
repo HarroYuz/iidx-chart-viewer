@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.data.remote.textage
 
+import com.harroyuz.iidxchartviewer.data.text.decodeHtmlEntities
 import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import com.harroyuz.iidxchartviewer.R
 import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
@@ -1089,19 +1090,7 @@ internal object TextageParser {
         .replace(Regex("\\s+"), " ")
         .trim()
 
-    private fun decodeHtml(value: String): String = value
-        .replace("&nbsp;", " ", ignoreCase = true)
-        .replace("&amp;", "&", ignoreCase = true)
-        .replace("&lt;", "<", ignoreCase = true)
-        .replace("&gt;", ">", ignoreCase = true)
-        .replace("&quot;", "\"", ignoreCase = true)
-        .replace("&#39;", "'", ignoreCase = true)
-        .replace(Regex("&#x([0-9a-fA-F]+);")) { match ->
-            match.groupValues[1].toIntOrNull(16)?.toChar()?.toString() ?: match.value
-        }
-        .replace(Regex("&#(\\d+);")) { match ->
-            match.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: match.value
-        }
+    private fun decodeHtml(value: String): String = decodeHtmlEntities(value)
 
     private fun absoluteUrl(value: String, pageUrl: String? = null, catalogBase: String? = null): String? {
         val base = pageUrl ?: catalogBase ?: return null

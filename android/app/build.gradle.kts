@@ -21,8 +21,8 @@ android {
         applicationId = "com.harroyuz.iidxchartviewer"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.1.6"
+        versionCode = 22
+        versionName = "1.1.7"
     }
 
     signingConfigs {
@@ -54,6 +54,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -66,12 +67,14 @@ kotlin {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("org.mozilla:rhino:1.7.15")
+    implementation("org.jsoup:jsoup:1.23.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation(platform("androidx.compose:compose-bom:2025.08.00"))
@@ -83,4 +86,18 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+// Opt-in, offline comparison of public catalog snapshots using the app's real matching code.
+tasks.register<JavaExec>("auditCatalog") {
+    dependsOn("compileDebugUnitTestKotlin", "processDebugUnitTestJavaRes")
+    mainClass.set("com.harroyuz.iidxchartviewer.tools.CatalogAudit")
+    doFirst {
+        classpath = tasks.named<Test>("testDebugUnitTest").get().classpath
+        args(
+            providers.gradleProperty("auditTextage").get(),
+            providers.gradleProperty("auditBjm").get(),
+            providers.gradleProperty("auditOutput").get(),
+        )
+    }
 }

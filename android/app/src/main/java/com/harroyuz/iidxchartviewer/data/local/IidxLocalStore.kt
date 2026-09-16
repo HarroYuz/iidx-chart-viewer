@@ -27,10 +27,11 @@ class IidxLocalStore(context: Context) {
         // Increment when chart timing/position decoding changes so old
         // parsed charts are refreshed automatically on first access.
         const val CHART_CACHE_VERSION = 11
-        const val CATALOG_HEADER = "#iidx-catalog-v4"
+        const val CATALOG_HEADER = "#iidx-catalog-v5"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 5
-        const val BJM_INDEX_VERSION = 2
-        const val SONG_GROUPS_VERSION = 1
+        const val BJM_INDEX_VERSION = 3
+        const val BJM_MUSIC_TEXT_VERSION = 1
+        const val SONG_GROUPS_VERSION = 2
     }
 
     private val preferences = context.getSharedPreferences("iidx-local-state", Context.MODE_PRIVATE)
@@ -48,7 +49,7 @@ class IidxLocalStore(context: Context) {
                 val array = JSONArray(preferences.getString("charts", "[]"))
                 val legacy = buildList {
                     for (index in 0 until array.length()) {
-                        val chart = array.getJSONObject(index).toChart()
+                        val chart = array.getJSONObject(index).toChart().decodeLegacyTextageEntities()
                         if (!chart.id.startsWith("demo-")) add(chart)
                     }
                 }
@@ -65,8 +66,12 @@ class IidxLocalStore(context: Context) {
         }.getOrDefault(emptyList())
         val bjmMusic = runCatching {
             val array = JSONArray(preferences.getString("bjm_music", "[]"))
+            val migrateText = preferences.getInt("bjm_music_text_version", 0) < BJM_MUSIC_TEXT_VERSION
             buildList {
-                for (index in 0 until array.length()) add(array.getJSONObject(index).toBjmMusic())
+                for (index in 0 until array.length()) {
+                    val music = array.getJSONObject(index).toBjmMusic()
+                    add(if (migrateText) music.decodeLegacyBjmEntities() else music)
+                }
             }
         }.getOrDefault(emptyList())
         val songGroups = runCatching {
@@ -115,6 +120,7 @@ class IidxLocalStore(context: Context) {
             .putString("song_groups", songGroups.toString())
             .putString("bjm_scores", scores.toString())
             .putString("bjm_music", bjmMusic.toString())
+            .putInt("bjm_music_text_version", BJM_MUSIC_TEXT_VERSION)
             .putString("bjm_user", user)
             .putLong("bjm_synced_at", state.bjmSyncedAt ?: 0L)
             .apply()
@@ -471,7 +477,8 @@ class IidxLocalStore(context: Context) {
     @Synchronized
     private fun readCatalogFile(): List<IidxChart> = AtomicFile(catalogFile).openRead().bufferedReader().useLines { lines ->
         val allLines = lines.toList()
-        val compact = allLines.firstOrNull() in setOf(CATALOG_HEADER, "#iidx-catalog-v3")
+        val header = allLines.firstOrNull()
+        val compact = header in setOf(CATALOG_HEADER, "#iidx-catalog-v4", "#iidx-catalog-v3")
         allLines.drop(if (compact) 1 else 0).mapNotNull { line ->
             val values = line.split('\t')
             if (values.size !in 14..16) return@mapNotNull null
@@ -496,7 +503,7 @@ class IidxLocalStore(context: Context) {
                     score = values[11].takeIf { it.isNotEmpty() }?.let(number),
                     confirmed = number(values[12]) == 1,
                     textageUrl = values[13].takeIf { it.isNotEmpty() }?.let(text)?.normalizeTextageUrl(version),
-                )
+                ).let { if (header == CATALOG_HEADER) it else it.decodeLegacyTextageEntities() }
             }.getOrNull()
         }.toList()
     }

@@ -1,6 +1,6 @@
 # IIDX 谱面浏览器
 
-当前版本：1.1.6
+当前版本：1.1.7
 
 一个纯 Android 的 beatmania IIDX 谱面浏览与本地播放器应用，使用 Kotlin 和 Jetpack Compose 实现。
 
@@ -24,6 +24,23 @@
 BJM 成绩接口没有独立的 DJ RATE 字段，其网站使用另一份 NOTE 数据库和 EX SCORE 计算等级。本应用保存这一参考 NOTE 数和计算等级，仅在参考 NOTE 数与目标谱面一致、EX SCORE 合法、DJ RATE 一致时展示成绩。缺少依据的旧成绩继续保留在历史记录中，同步到相同记录后补充依据。这个校验可排除 NOTE 数不同的版本，无法区分 NOTE 数相同但编排不同的谱面版本。
 
 Textage 当前街机版未收录的曲目在版本右侧统一显示红字“删除曲”，曲名保持普通颜色。筛选区可开启“不显示删除曲”，隐藏所有带此标记的谱面；重置筛选后恢复显示。曲目候选优先选可浏览的当前收录版本；成绩历史在 NOTE 数校验通过的候选中优先选当前收录版本。旧版可能缺少对应 BJM 成绩或雷达；无可用雷达时显示“暂无雷达数据”。
+
+## 曲名编码与匹配核对
+
+Textage 与 BJM 的 HTML 实体（例如 `&atilde;`、`&Oslash;`）会统一解码后参与曲名匹配；升级时离线迁移旧曲库文字并重建曲目和成绩索引，保留谱面 ID、成绩及登录状态。
+
+[2026-09-16 全量匹配核对清单](docs/reports/catalog-matching-2026-09-16.md) 列出修复恢复的匹配和仍未匹配的曲目。相近标题仅作为人工核对候选，不自动绑定；NOTE 数和成绩兼容性校验保持原有规则。
+
+可使用公开曲库快照复现匹配结果（Textage 源码需预先转为 UTF-8，BJM 使用原始 mdb 二进制）：
+
+```bash
+./gradlew -p android :app:auditCatalog \
+  -PauditTextage=/absolute/path/textage-combined.js \
+  -PauditBjm=/absolute/path/LDJ_mdb_33.bin \
+  -PauditOutput=/absolute/path/audit-output
+```
+
+该离线任务复用应用的解析和匹配代码，不访问账号或成绩服务；输出 `songs.tsv` 和 `music.tsv`，仅用于核对公开曲目数据。
 
 ## 项目结构
 
