@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -149,6 +150,7 @@ internal fun ChartBrowserScreen(
     var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
     var hideDeleted by rememberSaveable { mutableStateOf(false) }
+    var hideConsumer by rememberSaveable { mutableStateOf(false) }
     var searchGenreEnabled by rememberSaveable { mutableStateOf(true) }
     var searchTitleEnabled by rememberSaveable { mutableStateOf(true) }
     var searchComposerEnabled by rememberSaveable { mutableStateOf(true) }
@@ -338,13 +340,14 @@ internal fun ChartBrowserScreen(
                     selectedVersion,
                     selectedLevel,
                     hideDeleted,
+                    hideConsumer,
                     searchGenreEnabled,
                     searchTitleEnabled,
                     searchComposerEnabled,
                 ) {
                     allSongs.mapNotNull { song ->
                         val matchingCharts = song.charts.filter {
-                            it.matchesCatalogFilters(selectedVersion, selectedLevel, hideDeleted)
+                            it.matchesCatalogFilters(selectedVersion, selectedLevel, hideDeleted, hideConsumer)
                         }
                         val searchText = buildList {
                             if (searchGenreEnabled) add(song.genre)
@@ -456,6 +459,7 @@ internal fun ChartBrowserScreen(
                                         selectedVersion != null ||
                                         selectedLevel != null ||
                                         hideDeleted ||
+                                        hideConsumer ||
                                         selectedSearchDimensionCount < 3
                                     ) Purple else Muted,
                                 )
@@ -514,6 +518,7 @@ internal fun ChartBrowserScreen(
                                             selectedVersion = null
                                             selectedLevel = null
                                             hideDeleted = false
+                                            hideConsumer = false
                                             searchGenreEnabled = true
                                             searchTitleEnabled = true
                                             searchComposerEnabled = true
@@ -521,12 +526,21 @@ internal fun ChartBrowserScreen(
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                                     ) { Text("重置", color = Muted, fontSize = 11.sp) }
                                 }
-                                FilterChip(
-                                    selected = hideDeleted,
-                                    onClick = { hideDeleted = !hideDeleted },
-                                    label = { Text("不显示删除曲", fontSize = 12.sp) },
-                                    modifier = Modifier.padding(horizontal = 18.dp),
-                                )
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    FilterChip(
+                                        selected = hideDeleted,
+                                        onClick = { hideDeleted = !hideDeleted },
+                                        label = { Text("不显示删除曲", fontSize = 12.sp) },
+                                    )
+                                    FilterChip(
+                                        selected = hideConsumer,
+                                        onClick = { hideConsumer = !hideConsumer },
+                                        label = { Text("不显示家用版", fontSize = 12.sp) },
+                                    )
+                                }
                             }
                         }
                         val activeFilterSummary = buildString {
@@ -535,9 +549,13 @@ internal fun ChartBrowserScreen(
                                 if (isNotEmpty()) append("，")
                                 append("LEVEL $it")
                             }
-                            if (hideDeleted) {
+                            if (hideDeleted || hideConsumer) {
                                 if (isNotEmpty()) append("，")
-                                append("不显示删除曲")
+                                append("不显示")
+                                append(listOfNotNull(
+                                    "删除曲".takeIf { hideDeleted },
+                                    "家用版".takeIf { hideConsumer },
+                                ).joinToString("/"))
                             }
                         }
                         val collapsedFilterSummary = buildString {
@@ -570,7 +588,7 @@ internal fun ChartBrowserScreen(
                                 Text("没有找到匹配曲目", style = MaterialTheme.typography.titleMedium, color = Ink)
                                 Spacer(Modifier.height(8.dp))
                                 Text("试试其他关键词，或重置版本和等级筛选", style = MaterialTheme.typography.bodySmall, color = Muted)
-                                TextButton(onClick = { query = ""; selectedVersion = null; selectedLevel = null; hideDeleted = false }) {
+                                TextButton(onClick = { query = ""; selectedVersion = null; selectedLevel = null; hideDeleted = false; hideConsumer = false }) {
                                     Text("清除筛选")
                                 }
                             }

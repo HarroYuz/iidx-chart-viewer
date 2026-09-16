@@ -25,8 +25,10 @@ internal fun ChartVersionLabel(
         buildAnnotatedString {
             if (detail) withStyle(SpanStyle(color = Muted)) { append("版本 ") }
             withStyle(SpanStyle(color = NormalBlue)) { append(version.ifBlank { "—" }) }
-            if (status?.isUnavailable == true) {
-                withStyle(SpanStyle(color = RemovedSongColor)) { append(" · 删除曲") }
+            when (status) {
+                ArcadeStatus.DELETED -> withStyle(SpanStyle(color = RemovedSongColor)) { append(" · 删除曲") }
+                ArcadeStatus.CONSUMER_ONLY -> withStyle(SpanStyle(color = NormalBlue)) { append(" · 家用版") }
+                else -> Unit
             }
         },
         modifier = modifier,
