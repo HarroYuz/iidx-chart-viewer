@@ -19,6 +19,8 @@ data class IidxChart(
     val confirmed: Boolean = false,
     val textageUrl: String? = null,
     val arcadeStatus: ArcadeStatus = ArcadeStatus.UNKNOWN,
+    val textageIndex: Int? = null,
+    val textageVersion: Int? = null,
 )
 
 data class ChartNote(

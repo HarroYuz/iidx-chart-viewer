@@ -131,6 +131,8 @@ internal object TextageParser {
                     level = level,
                     notes = noteCount,
                     version = version,
+                    textageIndex = values.getOrNull(1)?.intValue(constants),
+                    textageVersion = versionIndex,
                     sourceLabel = sourceLabel,
                     arcadeStatus = arcadeStatus,
                     textageUrl = chartBaseUrl.takeIf { noteCount > 0 },

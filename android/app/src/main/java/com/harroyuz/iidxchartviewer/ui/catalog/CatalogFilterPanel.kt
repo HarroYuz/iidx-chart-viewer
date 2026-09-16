@@ -85,7 +85,7 @@ internal fun CatalogFilterPanel(
         Modifier.fillMaxWidth().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        FilterChoiceRow("关键字搜索范围：", listOf("曲风", "曲名", "曲师"), searchFields::contains, onSearchFieldToggle)
+        FilterChoiceRow("关键字搜索范围：", listOf("曲名", "曲师", "曲风"), searchFields::contains, onSearchFieldToggle)
         FilterChoiceRow("曲目类型：", catalogSongTypes, types::contains, onTypeToggle) { it.filterLabel() }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterExpansionButton(

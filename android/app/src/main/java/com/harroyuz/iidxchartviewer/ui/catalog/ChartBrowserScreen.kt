@@ -30,11 +30,17 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.harroyuz.iidxchartviewer.domain.catalog.buildCatalogVersionOptions
 import com.harroyuz.iidxchartviewer.domain.catalog.catalogSongTypes
+import com.harroyuz.iidxchartviewer.domain.catalog.CatalogSortOrder
+import com.harroyuz.iidxchartviewer.domain.catalog.CatalogSortDimension
+import com.harroyuz.iidxchartviewer.domain.catalog.sortCatalogSongs
+import com.harroyuz.iidxchartviewer.domain.catalog.toggleCatalogSongType
 import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
 import com.harroyuz.iidxchartviewer.domain.catalog.matchesCatalogFilters
 import com.harroyuz.iidxchartviewer.ui.motion.LocalBrowseMotion
@@ -140,6 +146,8 @@ internal fun ChartBrowserScreen(
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedVersions by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedLevels by rememberSaveable { mutableStateOf(emptyList<Int>()) }
+    var sortOrder by rememberSaveable { mutableStateOf(CatalogSortOrder.TITLE_ASCENDING) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     var includeDeleted by rememberSaveable { mutableStateOf(true) }
     var includeConsumer by rememberSaveable { mutableStateOf(true) }
     var includeCurrent by rememberSaveable { mutableStateOf(true) }
@@ -147,7 +155,7 @@ internal fun ChartBrowserScreen(
         if (includeDeleted) add(ArcadeStatus.DELETED)
         if (includeConsumer) add(ArcadeStatus.CONSUMER_ONLY)
         if (includeCurrent) add(ArcadeStatus.CURRENT)
-    }
+    }.ifEmpty { catalogSongTypes.toSet() }
     var searchGenreEnabled by rememberSaveable { mutableStateOf(true) }
     var searchTitleEnabled by rememberSaveable { mutableStateOf(true) }
     var searchComposerEnabled by rememberSaveable { mutableStateOf(true) }
@@ -156,6 +164,14 @@ internal fun ChartBrowserScreen(
     var bjmHistoryCalendarExpanded by rememberSaveable { mutableStateOf(false) }
     var bjmHistoryCalendarMonth by rememberSaveable { mutableStateOf(historyMonthKey(System.currentTimeMillis())) }
     val bjmHistoryListState = rememberLazyListState()
+    val catalogListState = rememberLazyListState()
+    fun selectSortOrder(next: CatalogSortOrder) {
+        if (sortOrder != next) {
+            sortOrder = next
+            catalogListState.requestScrollToItem(0)
+        }
+        sortMenuExpanded = false
+    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     fun closeDrawer() {
@@ -291,11 +307,13 @@ internal fun ChartBrowserScreen(
                                 version = group.version,
                                 sourceLabel = group.sourceLabel,
                                 charts = charts,
+                                textageIndex = charts.filter { it.version == group.version }
+                                    .maxWithOrNull(preferredChartOrder)?.textageIndex,
                             )
                         }
                     }
                 }
-                val songs = remember(
+                val filteredSongs = remember(
                     allSongs,
                     query,
                     selectedVersions,
@@ -327,7 +345,10 @@ internal fun ChartBrowserScreen(
                         ) {
                             null
                         } else {
+                            val representative = matchingCharts.maxWithOrNull(preferredChartOrder) ?: matchingCharts.first()
                             song.copy(
+                                version = representative.version,
+                                textageIndex = representative.textageIndex,
                                 charts = matchingCharts
                                     .groupBy { it.difficulty }
                                     .values
@@ -341,15 +362,20 @@ internal fun ChartBrowserScreen(
                         }
                     }
                 }
+                val songs = remember(filteredSongs, sortOrder, versionOptions) {
+                    val versionOrder = versionOptions.associate { it.value to it.order }
+                    sortCatalogSongs(filteredSongs, sortOrder, SongGroup::title, SongGroup::key,
+                        { versionOrder[it.version] ?: Int.MAX_VALUE }, SongGroup::textageIndex)
+                }
                 val selectedSearchDimensionCount = listOf(
                     searchGenreEnabled,
                     searchTitleEnabled,
                     searchComposerEnabled,
                 ).count { it }
                 val searchDimensions = buildList {
-                    if (searchGenreEnabled) add("曲风")
                     if (searchTitleEnabled) add("曲名")
                     if (searchComposerEnabled) add("曲师")
+                    if (searchGenreEnabled) add("曲风")
                 }
                 val searchPlaceholder = when (searchDimensions.size) {
                     1 -> "搜索${searchDimensions.first()}"
@@ -444,12 +470,10 @@ internal fun ChartBrowserScreen(
                                 },
                                 types = selectedTypes,
                                 onTypeToggle = { type ->
-                                    when (type) {
-                                        ArcadeStatus.DELETED -> includeDeleted = !includeDeleted
-                                        ArcadeStatus.CONSUMER_ONLY -> includeConsumer = !includeConsumer
-                                        ArcadeStatus.CURRENT -> includeCurrent = !includeCurrent
-                                        ArcadeStatus.UNKNOWN -> Unit
-                                    }
+                                    val next = toggleCatalogSongType(selectedTypes, type)
+                                    includeDeleted = ArcadeStatus.DELETED in next
+                                    includeConsumer = ArcadeStatus.CONSUMER_ONLY in next
+                                    includeCurrent = ArcadeStatus.CURRENT in next
                                 },
                                 levels = selectedLevels.toSet(),
                                 onLevelToggle = { selectedLevels = if (it in selectedLevels) selectedLevels - it else selectedLevels + it },
@@ -477,8 +501,7 @@ internal fun ChartBrowserScreen(
                             }
                             if (selectedLevels.isNotEmpty()) add("LEVEL ${selectedLevels.sorted().joinToString("/")}")
                             if (selectedTypes.size < catalogSongTypes.size) {
-                                add(if (selectedTypes.isEmpty()) "未选择曲目类型" else
-                                    "曲目类型：${catalogSongTypes.filter { it in selectedTypes }.joinToString("/") { it.filterLabel() }}")
+                                add("曲目类型：${catalogSongTypes.filter { it in selectedTypes }.joinToString("/") { it.filterLabel() }}")
                             }
                         }.joinToString("，")
                         val collapsedFilterSummary = buildString {
@@ -498,12 +521,31 @@ internal fun ChartBrowserScreen(
                                 modifier = Modifier.padding(horizontal = 20.dp),
                             )
                         }
-                        Text(
-                            "${songs.size} 首曲目 · $mode",
-                            color = Muted,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                        )
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("${songs.size} 首曲目 · $mode", color = Muted,
+                                style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                            Text("排序：", color = Muted, fontSize = 11.sp)
+                            Box {
+                                TextButton(onClick = { sortMenuExpanded = true }) {
+                                    Text("${sortOrder.dimension.label()} ▾", color = Purple, fontSize = 11.sp)
+                                }
+                                DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                                    CatalogSortDimension.entries.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option.label(), color = if (option == sortOrder.dimension) Purple else Ink,
+                                                fontWeight = if (option == sortOrder.dimension) FontWeight.Bold else FontWeight.Normal) },
+                                            onClick = { selectSortOrder(sortOrder.withDimension(option)) },
+                                        )
+                                    }
+                                }
+                            }
+                            TextButton(onClick = { selectSortOrder(sortOrder.reversed()) }) {
+                                Text(if (sortOrder.descending) "降序 ↓" else "升序 ↑", color = Purple, fontSize = 11.sp)
+                            }
+                        }
                     }
                     if (songs.isEmpty()) {
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
@@ -524,7 +566,7 @@ internal fun ChartBrowserScreen(
                             }
                         }
                     }
-                    if (songs.isNotEmpty()) LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                    if (songs.isNotEmpty()) LazyColumn(Modifier.fillMaxWidth().weight(1f), state = catalogListState) {
                         itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
                             SongGroupRow(
                                 song = song,
@@ -607,6 +649,11 @@ private fun FunnelIcon(color: ComposeColor) {
     }
 }
 
+private fun CatalogSortDimension.label(): String = when (this) {
+    CatalogSortDimension.TITLE -> "曲名"
+    CatalogSortDimension.VERSION -> "版本"
+}
+
 internal fun displayTitle(title: String, sourceLabel: String): String =
     listOf(title.trim(), sourceLabel.trim()).filter { it.isNotBlank() }.joinToString(" ")
 
@@ -619,4 +666,5 @@ internal data class SongGroup(
     val version: String,
     val sourceLabel: String,
     val charts: List<IidxChart>,
+    val textageIndex: Int? = null,
 )

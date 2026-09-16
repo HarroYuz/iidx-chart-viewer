@@ -21,8 +21,8 @@ android {
         applicationId = "com.harroyuz.iidxchartviewer"
         minSdk = 26
         targetSdk = 36
-        versionCode = 27
-        versionName = "1.1.12"
+        versionCode = 28
+        versionName = "1.1.13"
     }
 
     signingConfigs {

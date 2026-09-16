@@ -3,7 +3,13 @@ package com.harroyuz.iidxchartviewer.domain.catalog
 import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 
-internal val catalogSongTypes = listOf(ArcadeStatus.DELETED, ArcadeStatus.CONSUMER_ONLY, ArcadeStatus.CURRENT)
+internal val catalogSongTypes = listOf(ArcadeStatus.CURRENT, ArcadeStatus.CONSUMER_ONLY, ArcadeStatus.DELETED)
+
+internal fun toggleCatalogSongType(selected: Set<ArcadeStatus>, type: ArcadeStatus): Set<ArcadeStatus> {
+    val valid = selected.intersect(catalogSongTypes.toSet()).ifEmpty { catalogSongTypes.toSet() }
+    if (type !in catalogSongTypes || (type in valid && valid.size == 1)) return valid
+    return if (type in valid) valid - type else valid + type
+}
 
 internal fun IidxChart.matchesCatalogFilters(
     versions: Set<String>,
@@ -26,7 +32,7 @@ internal data class CatalogVersionOption(val value: String, val label: String, v
 
 internal fun buildCatalogVersionOptions(charts: List<IidxChart>): List<CatalogVersionOption> =
     charts.filter { it.version.isNotBlank() }.groupBy { it.version }.map { (version, members) ->
-        val index = members.firstNotNullOfOrNull { it.textageUrl?.let(::textageVersionIndex) }
+        val index = members.firstNotNullOfOrNull { it.textageVersion ?: it.textageUrl?.let(::textageVersionIndex) }
         when {
             version.equals("substream", ignoreCase = true) -> CatalogVersionOption(version, "substream", 0)
             index == 0 || version.equals("Consumer only", ignoreCase = true) || version.equals("CS", ignoreCase = true) ->

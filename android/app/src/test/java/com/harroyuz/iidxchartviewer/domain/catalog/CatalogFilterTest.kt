@@ -9,6 +9,22 @@ class CatalogFilterTest {
     private val chart = IidxChart("a", "Song", mode = "SP", difficulty = "A", level = 12, notes = 1000, version = "33")
     private val allTypes = catalogSongTypes.toSet()
 
+    @Test fun typeSelectionCannotRemoveItsLastItemButCanAddOtherTypes() {
+        for (type in catalogSongTypes) {
+            val only = setOf(type)
+            assertEquals(only, toggleCatalogSongType(only, type))
+            val other = catalogSongTypes.first { it != type }
+            assertEquals(setOf(type, other), toggleCatalogSongType(only, other))
+            assertEquals(setOf(other), toggleCatalogSongType(setOf(type, other), type))
+        }
+    }
+
+    @Test fun typesUseRequestedOrderAndRecoverOldEmptySelections() {
+        assertEquals(listOf(ArcadeStatus.CURRENT, ArcadeStatus.CONSUMER_ONLY, ArcadeStatus.DELETED), catalogSongTypes)
+        assertEquals(allTypes - ArcadeStatus.DELETED, toggleCatalogSongType(emptySet(), ArcadeStatus.DELETED))
+        assertEquals(allTypes, toggleCatalogSongType(emptySet(), ArcadeStatus.UNKNOWN))
+    }
+
     @Test fun defaultsPreserveEveryStatusIncludingUnknownMetadata() {
         ArcadeStatus.entries.forEach {
             assertTrue(chart.copy(arcadeStatus = it).matchesCatalogFilters(emptySet(), emptySet(), allTypes))
@@ -54,5 +70,11 @@ class CatalogFilterTest {
         val options = buildCatalogVersionOptions(listOf(chart.copy(version = "substream"), chart.copy(version = "Consumer only"), chart.copy(version = "Legacy")))
         assertEquals(listOf("Consumer Only", "substream", "Legacy"), options.map { it.label })
         assertEquals(listOf("CS", "sub", "Legacy"), options.map { it.abbreviation })
+    }
+
+    @Test fun storedTextageVersionsOrderChartsEvenWhenPlaybackUrlsAreUnavailable() {
+        val samples = listOf(chart.copy(version = "EPOLIS", textageVersion = 31),
+            chart.copy(version = "substream", textageVersion = 35), chart.copy(version = "Consumer only", textageVersion = 0))
+        assertEquals(listOf(-1, 0, 31), buildCatalogVersionOptions(samples).map { it.order })
     }
 }

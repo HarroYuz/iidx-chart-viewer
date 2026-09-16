@@ -483,7 +483,8 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private fun automaticDataSyncTargets(now: Long = System.currentTimeMillis()): List<DataSyncTarget> = buildList {
-        if (!store.isTextageSyncComplete() || !isSameLocalDate(store.textageLastSyncAt(), now)) {
+        if (!store.isTextageSyncComplete() || !isSameLocalDate(store.textageLastSyncAt(), now) ||
+            appState.charts.any { it.id.startsWith("textage-") && (it.textageIndex == null || it.textageVersion == null) }) {
             add(DataSyncTarget.TEXTAGE)
         }
         if (appState.bjmMusic.isEmpty() || !isSameLocalDate(store.bjmMusicRevision(), now)) {

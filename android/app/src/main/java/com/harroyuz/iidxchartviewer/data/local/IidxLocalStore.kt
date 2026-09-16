@@ -27,7 +27,7 @@ class IidxLocalStore(context: Context) {
         // Increment when chart timing/position decoding changes so old
         // parsed charts are refreshed automatically on first access.
         const val CHART_CACHE_VERSION = 11
-        const val CATALOG_HEADER = "#iidx-catalog-v5"
+        const val CATALOG_HEADER = "#iidx-catalog-v6"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 5
         const val BJM_INDEX_VERSION = 4
         const val BJM_MUSIC_TEXT_VERSION = 1
@@ -478,10 +478,10 @@ class IidxLocalStore(context: Context) {
     private fun readCatalogFile(): List<IidxChart> = AtomicFile(catalogFile).openRead().bufferedReader().useLines { lines ->
         val allLines = lines.toList()
         val header = allLines.firstOrNull()
-        val compact = header in setOf(CATALOG_HEADER, "#iidx-catalog-v4", "#iidx-catalog-v3")
+        val compact = header in setOf(CATALOG_HEADER, "#iidx-catalog-v5", "#iidx-catalog-v4", "#iidx-catalog-v3")
         allLines.drop(if (compact) 1 else 0).mapNotNull { line ->
             val values = line.split('\t')
-            if (values.size !in 14..16) return@mapNotNull null
+            if (values.size !in 14..18) return@mapNotNull null
             runCatching {
                 val text = if (compact) ::unescapeField else ::decodeField
                 val number = if (compact) String::toInt else ::decodeIntField
@@ -499,11 +499,13 @@ class IidxLocalStore(context: Context) {
                     notes = number(values[9]),
                     version = version,
                     arcadeStatus = ArcadeStatus.fromStored(values.getOrNull(15)),
+                    textageIndex = values.getOrNull(16)?.toIntOrNull(),
+                    textageVersion = values.getOrNull(17)?.toIntOrNull(),
                     sourceLabel = values.getOrNull(14)?.takeIf { it.isNotEmpty() }?.let(text).orEmpty(),
                     score = values[11].takeIf { it.isNotEmpty() }?.let(number),
                     confirmed = number(values[12]) == 1,
                     textageUrl = values[13].takeIf { it.isNotEmpty() }?.let(text)?.normalizeTextageUrl(version),
-                ).let { if (header == CATALOG_HEADER) it else it.decodeLegacyTextageEntities() }
+                ).let { if (header in setOf(CATALOG_HEADER, "#iidx-catalog-v5")) it else it.decodeLegacyTextageEntities() }
             }.getOrNull()
         }.toList()
     }
@@ -536,6 +538,8 @@ class IidxLocalStore(context: Context) {
                         chart.textageUrl?.let(::escapeField).orEmpty(),
                         escapeField(chart.sourceLabel),
                         chart.arcadeStatus.name,
+                        chart.textageIndex?.toString().orEmpty(),
+                        chart.textageVersion?.toString().orEmpty(),
                     ).joinToString("\t"),
                 )
             }

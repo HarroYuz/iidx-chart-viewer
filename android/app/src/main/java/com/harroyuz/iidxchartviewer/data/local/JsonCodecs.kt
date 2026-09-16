@@ -25,6 +25,8 @@ internal fun IidxChart.toJson() = JSONObject().apply {
     put("confirmed", confirmed)
     put("textage_url", textageUrl ?: JSONObject.NULL)
     put("arcade_status", arcadeStatus.name)
+    put("textage_index", textageIndex ?: JSONObject.NULL)
+    put("textage_version", textageVersion ?: JSONObject.NULL)
 }
 
 internal fun JSONObject.toChart(): IidxChart {
@@ -43,6 +45,8 @@ internal fun JSONObject.toChart(): IidxChart {
     version = version,
     sourceLabel = optString("source_label"),
     arcadeStatus = ArcadeStatus.fromStored(optString("arcade_status")),
+    textageIndex = if (isNull("textage_index")) null else optInt("textage_index"),
+    textageVersion = if (isNull("textage_version")) null else optInt("textage_version"),
     score = if (isNull("score")) null else optInt("score"),
     confirmed = optBoolean("confirmed"),
     textageUrl = if (isNull("textage_url")) null else optString("textage_url")
