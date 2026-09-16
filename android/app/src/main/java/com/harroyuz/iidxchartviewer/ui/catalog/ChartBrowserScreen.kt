@@ -70,9 +70,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -161,7 +158,6 @@ internal fun ChartBrowserScreen(
     var searchComposerEnabled by rememberSaveable { mutableStateOf(true) }
     var bjmHistoryQuery by rememberSaveable { mutableStateOf("") }
     var bjmHistoryDate by rememberSaveable { mutableStateOf<String?>(null) }
-    var bjmHistoryCalendarExpanded by rememberSaveable { mutableStateOf(false) }
     var bjmHistoryCalendarMonth by rememberSaveable { mutableStateOf(historyMonthKey(System.currentTimeMillis())) }
     val bjmHistoryListState = rememberLazyListState()
     val catalogListState = rememberLazyListState()
@@ -598,8 +594,7 @@ internal fun ChartBrowserScreen(
                     onQueryChange = { bjmHistoryQuery = it },
                     selectedDate = bjmHistoryDate,
                     onSelectedDateChange = { bjmHistoryDate = it },
-                    calendarExpanded = bjmHistoryCalendarExpanded,
-                    onCalendarExpandedChange = { bjmHistoryCalendarExpanded = it },
+                    visualEffectsDisabled = visualEffectsDisabled,
                     calendarMonth = bjmHistoryCalendarMonth,
                     onCalendarMonthChange = { bjmHistoryCalendarMonth = it },
                     listState = bjmHistoryListState,
@@ -630,22 +625,6 @@ internal fun ChartBrowserScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun FunnelIcon(color: ComposeColor) {
-    Canvas(Modifier.size(22.dp)) {
-        val path = Path().apply {
-            moveTo(size.width * .12f, size.height * .18f)
-            lineTo(size.width * .88f, size.height * .18f)
-            lineTo(size.width * .60f, size.height * .52f)
-            lineTo(size.width * .60f, size.height * .82f)
-            lineTo(size.width * .40f, size.height * .70f)
-            lineTo(size.width * .40f, size.height * .52f)
-            close()
-        }
-        drawPath(path, color = color, style = Stroke(width = 2f))
     }
 }
 

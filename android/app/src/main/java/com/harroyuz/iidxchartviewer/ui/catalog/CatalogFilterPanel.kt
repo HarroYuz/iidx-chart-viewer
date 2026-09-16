@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -74,6 +79,8 @@ internal fun CatalogFilterPanel(
     onClearVersions: () -> Unit,
     onReset: () -> Unit,
     visualEffectsDisabled: Boolean,
+    dateSummary: String = "全部",
+    dateContent: (@Composable () -> Unit)? = null,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var section by rememberSaveable { mutableStateOf("level") }
@@ -96,6 +103,10 @@ internal fun CatalogFilterPanel(
                 "版本", if (versions.isEmpty()) "全部" else "${versions.size} 项",
                 expanded && section == "version", { toggleSection("version") }, Modifier.weight(1f),
             )
+            if (dateContent != null) {
+                FilterExpansionButton("日期", dateSummary, expanded && section == "date",
+                    { toggleSection("date") }, Modifier.weight(1f))
+            }
             CompactFilterAction("重置", onClick = onReset)
         }
         AnimatedVisibility(
@@ -107,7 +118,11 @@ internal fun CatalogFilterPanel(
         ) {
             // The bounded, scrollable grid keeps the catalog usable on small screens.
             val maxHeight = minOf(320.dp, (LocalConfiguration.current.screenHeightDp * .38f).dp)
-            Column(Modifier.fillMaxWidth()) {
+            if (section == "date") {
+                Box(Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(rememberScrollState())) {
+                    dateContent?.invoke()
+                }
+            } else Column(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("可多选，未选时不限", color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                     CompactFilterAction("不限", onClick = if (section == "level") onClearLevels else onClearVersions)
@@ -119,6 +134,22 @@ internal fun CatalogFilterPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun FunnelIcon(color: Color) {
+    Canvas(Modifier.size(22.dp)) {
+        val path = Path().apply {
+            moveTo(size.width * .12f, size.height * .18f)
+            lineTo(size.width * .88f, size.height * .18f)
+            lineTo(size.width * .60f, size.height * .52f)
+            lineTo(size.width * .60f, size.height * .82f)
+            lineTo(size.width * .40f, size.height * .70f)
+            lineTo(size.width * .40f, size.height * .52f)
+            close()
+        }
+        drawPath(path, color = color, style = Stroke(width = 2f))
     }
 }
 
