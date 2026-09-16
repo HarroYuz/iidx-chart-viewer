@@ -29,7 +29,7 @@ class IidxLocalStore(context: Context) {
         const val CHART_CACHE_VERSION = 11
         const val CATALOG_HEADER = "#iidx-catalog-v5"
         const val TEXTAGE_CATALOG_PARSER_VERSION = 5
-        const val BJM_INDEX_VERSION = 3
+        const val BJM_INDEX_VERSION = 4
         const val BJM_MUSIC_TEXT_VERSION = 1
         const val SONG_GROUPS_VERSION = 2
     }

@@ -5,22 +5,24 @@
 - Textage：17,267 张谱面，按应用真实曲目分组规则得到 **2,661 个条目**；同名不同版本/来源可能是不同条目。
 - BJM：公开 LDJ 33 代音乐库 **2,017 条**，版本标记 `2026080900`。没有读取账号、Cookie 或用户成绩。
 - 修复前未匹配 **591** 条，完整 HTML 实体解码后未匹配 **564** 条；恢复 **27** 个 Textage 条目。原先匹配成功的条目 **0 丢失、0 目标 ID 变更**。
-- 剩余：**当前收录 8、删除曲 472、家用版 83、未知 1**。混合 UNKNOWN 的条目按已知删除/家用状态归类，原始状态保留在表中。
-- 当前收录条目的 BJM 候选是人工核对线索，**尚未写入应用匹配规则**。其余条目完整列出，不把删除/家用状态当作“必然未收录”的证据。
+- 1.1.8 增加保留符号的精确匹配与用户确认的五项别名，进一步恢复 **7** 个条目，未匹配降至 **557**；相较 1.1.7 原匹配 **0 丢失、0 目标 ID 变更**。累计相较实体解码前恢复 **34** 个条目。
+- 当前剩余：**当前收录 1、删除曲 472、家用版 83、未知 1**。混合 UNKNOWN 的条目按已知删除/家用状态归类，原始状态保留在表中。
+- U001～U005 已由用户确认同曲并加入完整曲名到 BJM ID 的别名；U006～U007 通过保留符号的精确匹配恢复。其余候选仍仅用于核对。原编号保留，不因已修复条目移出未匹配清单而重新编号。
+- 优先匹配主标题与副标题组成的完整名称，再尝试单独主标题；每个名称依次尝试保留符号的 NFKC / 小写精确匹配、已确认别名、原字母/数字规则，避免混音曲误连原曲。
 - 这里核对的是曲目到 BJM music ID 的关联，不是成绩 NOTE/EX/DJ RATE 的兼容性，也不保证所有难度都有雷达。
 - 采用同一份公开快照，分别运行修复前后的应用解析与 `buildBjmIndex`。Textage 脚本按兼容 Shift_JIS 的 Windows-31J 转为 UTF-8，再供离线审计读取。
 
-## 当前收录但仍未匹配（优先核对）
+## 原 U001～U008 核对进度（1.1.8）
 
-| 编号 | Textage 曲名 | BJM 候选 | 差异 / 待确认事项 |
+| 编号 | Textage 曲名 | BJM 候选 | 差异 / 处理结果 |
 | --- | --- | --- | --- |
-| U001 | [CODE:Ø](https://textage.cc/score/26/code_0.html) | CODE:0（ID 26016） | Textage 为 Ø（U+00D8），BJM 为数字 0（U+0030）。 |
-| U002 | [FiZZλ_PØT!OИ](https://textage.cc/score/33/fizzyptn.html) | FiZZλ_PØT!0И（ID 33018） | 感叹号后的字符，Textage 为字母 O，BJM 为数字 0。 |
-| U003 | [POLꓘAMAИIA](https://textage.cc/score/28/plkmania.html) | POLꞰAMAИIA（ID 28050） | Textage 为 ꓘ（U+A4D8，傈僳字母），BJM 为 Ʞ（U+A7B0，倒置拉丁 K）。 |
-| U004 | [uәn](https://textage.cc/score/32/_uen.html) | uən（ID 32006） | Textage 的 ә 是 U+04D9（西里尔字母），BJM 的 ə 是 U+0259（拉丁字母）。 |
-| U005 | [Χ-DEN](https://textage.cc/score/26/_kai_den.html) | X-DEN（ID 26007） | Textage 为希腊 Χ（U+03A7），BJM 为拉丁 X（U+0058）。 |
-| U006 | [∀](https://textage.cc/score/28/_turn_a.html) | ∀（ID 28005） | 两库均为 ∀；当前匹配规则仅保留字母、数字，导致 Textage 匹配键为空。BJM 的普通标题为 TURN A。 |
-| U007 | [≡＋≡](https://textage.cc/score/30/_3plus3.html) | ≡+≡（ID 30029） | NFKC 后两库标题相同，但均为符号，被当前字母/数字过滤规则清空。BJM 普通标题为 3+3。 |
+| U001 | [CODE:Ø](https://textage.cc/score/26/code_0.html) | CODE:0（ID 26016） | Textage 为 Ø，BJM 为数字 0；用户已确认同曲，已添加别名。 |
+| U002 | [FiZZλ_PØT!OИ](https://textage.cc/score/33/fizzyptn.html) | FiZZλ_PØT!0И（ID 33018） | 感叹号后为 O / 0；用户已确认同曲，已添加别名。 |
+| U003 | [POLꓘAMAИIA](https://textage.cc/score/28/plkmania.html) | POLꞰAMAИIA（ID 28050） | ꓘ（U+A4D8）与 Ʞ（U+A7B0）；用户已确认同曲，已添加别名。 |
+| U004 | [uәn](https://textage.cc/score/32/_uen.html) | uən（ID 32006） | ә（U+04D9）与 ə（U+0259）；用户已确认同曲，已添加别名。 |
+| U005 | [Χ-DEN](https://textage.cc/score/26/_kai_den.html) | X-DEN（ID 26007） | 希腊 Χ 与拉丁 X；用户已确认同曲，已添加别名。 |
+| U006 | [∀](https://textage.cc/score/28/_turn_a.html) | ∀（ID 28005） | 两库均为 ∀；现已通过保留符号的精确匹配恢复。 |
+| U007 | [≡＋≡](https://textage.cc/score/30/_3plus3.html) | ≡+≡（ID 30029） | NFKC 后两库标题相同；现已通过保留符号的精确匹配恢复。 |
 | U008 | [夢色ワンダー](https://textage.cc/score/33/_yumeiro.html) | — | 本次 BJM 快照未查到同名或 hololive IDOL PROJECT 曲师条目，是否尚未收录需确认。 |
 
 ## 本次实体解码恢复的 27 个条目
@@ -77,17 +79,10 @@
 | U495 | celebrate | 1st style | ACCELERATE（25013） |
 | U523 | IceCube Pf. (RX-Ver.S.P.L.) | Consumer only | WaterCube Pf.(RX-Ver.S.P.L.)（31014） / ToyCube Pf.(RX-Ver.S.P.L.)（26097） |
 
-## 全量未匹配：当前收录（8）
+## 全量未匹配：当前收录（1）
 
 | 编号 | Textage 曲名 | 版本 | 曲师 | 原始状态 | Textage key |
 | --- | --- | --- | --- | --- | --- |
-| U001 | [CODE:Ø](https://textage.cc/score/26/code_0.html) | Rootage | BEMANI Sound Team "HEXA" | CURRENT | code_0 |
-| U002 | [FiZZλ_PØT!OИ](https://textage.cc/score/33/fizzyptn.html) | Sparkle Shower | めめめ | CURRENT | fizzyptn |
-| U003 | [POLꓘAMAИIA](https://textage.cc/score/28/plkmania.html) | BISTROVER | かめりあ feat. ななひら | CURRENT | plkmania |
-| U004 | [uәn](https://textage.cc/score/32/_uen.html) | Pinky Crush | 少年ラジオ | CURRENT | _uen |
-| U005 | [Χ-DEN](https://textage.cc/score/26/_kai_den.html) | Rootage | T.Σ.Generation | CURRENT | _kai_den |
-| U006 | [∀](https://textage.cc/score/28/_turn_a.html) | BISTROVER | BEMANI Sound Team "HuΣeR" respect for D.J.Amuro | CURRENT | _turn_a |
-| U007 | [≡＋≡](https://textage.cc/score/30/_3plus3.html) | RESIDENT | Ryu☆ | CURRENT | _3plus3 |
 | U008 | [夢色ワンダー](https://textage.cc/score/33/_yumeiro.html) | Sparkle Shower | hololive IDOL PROJECT | CURRENT | _yumeiro;yumeiro |
 
 ## 全量未匹配：删除曲（472）

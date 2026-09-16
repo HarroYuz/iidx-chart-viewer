@@ -41,10 +41,26 @@ internal fun difficultyOrder(value: String): Int = when (value) {
     else -> 9
 }
 
+private fun normalizeExactMusicTitle(value: String): String =
+    Normalizer.normalize(value.trim(), Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+
 private fun normalizeMusicTitle(value: String): String =
-    Normalizer.normalize(value.trim(), Normalizer.Form.NFKC)
-        .lowercase(Locale.ROOT)
-        .replace(MusicTitleFilterRegex, "")
+    normalizeExactMusicTitle(value).replace(MusicTitleFilterRegex, "")
+
+// Confirmed catalog aliases, not general substitutions of visually similar characters.
+private val confirmedMusicAliases = mapOf(
+    "CODE:Ø" to 26016,
+    "FiZZλ_PØT!OИ" to 33018,
+    "POLꓘAMAИIA" to 28050,
+    "uәn" to 32006,
+    "Χ-DEN" to 26007,
+).mapKeys { normalizeExactMusicTitle(it.key) }
+
+internal data class BjmMusicLookup(
+    val exactTitles: Map<String, List<BjmMusic>>,
+    val looseTitles: Map<String, List<BjmMusic>>,
+    val byId: Map<Int, BjmMusic>,
+)
 
 internal val preferredChartOrder: Comparator<IidxChart> = compareBy<IidxChart>(
     { it.textageUrl != null }, { it.arcadeStatus.priority }, { it.notes }, { it.bpm.isNotBlank() },
@@ -65,41 +81,48 @@ internal fun buildSongGroups(charts: List<IidxChart>): List<IidxSongGroup> =
         )
     }
 
-internal fun buildBjmMusicIndex(music: List<BjmMusic>): Map<String, List<BjmMusic>> =
-    music
+internal fun buildBjmMusicIndex(music: List<BjmMusic>): BjmMusicLookup {
+    fun index(normalize: (String) -> String): Map<String, List<BjmMusic>> = music
         .flatMap { candidate ->
             setOf(candidate.title, candidate.plainTitle)
-                .map(::normalizeMusicTitle)
+                .map(normalize)
                 .filter(String::isNotBlank)
+                .distinct()
                 .map { it to candidate }
         }
         .groupBy({ it.first }, { it.second })
-
-internal fun findBjmMusic(chart: IidxChart, index: Map<String, List<BjmMusic>>): BjmMusic? {
-    val titleKeys = buildList {
-        if (chart.subtitle.isNotBlank()) add(normalizeMusicTitle("${chart.title} ${chart.subtitle}"))
-        add(normalizeMusicTitle(chart.title))
-    }.filter(String::isNotBlank).distinct()
-    val candidates = titleKeys
-        .flatMap { index[it].orEmpty() }
-        .distinctBy { it.musicId }
-    if (candidates.isEmpty()) return null
-    val chartVersion = chart.textageUrl?.let(::textageVersionIndex)
-    return candidates.maxWithOrNull(
-        compareBy<BjmMusic>(
-            { candidate ->
-                val candidateKeys = setOf(
-                    normalizeMusicTitle(candidate.title),
-                    normalizeMusicTitle(candidate.plainTitle),
-                )
-                titleKeys.indexOfFirst(candidateKeys::contains)
-                    .takeIf { it >= 0 }
-                    ?.let { titleKeys.size - it }
-                    ?: 0
-            },
-            { it.level(chart.mode, chart.difficulty) == chart.level },
-            { chartVersion != null && it.version == chartVersion },
-            { it.version },
-        ),
+    return BjmMusicLookup(
+        exactTitles = index(::normalizeExactMusicTitle),
+        looseTitles = index(::normalizeMusicTitle),
+        byId = music.associateBy { it.musicId },
     )
+}
+
+internal fun findBjmMusic(chart: IidxChart, index: BjmMusicLookup): BjmMusic? {
+    val titles = buildList {
+        if (chart.subtitle.isNotBlank()) add("${chart.title} ${chart.subtitle}")
+        add(chart.title)
+    }
+    fun match(candidates: List<BjmMusic>): BjmMusic? {
+        val chartVersion = chart.textageUrl?.let(::textageVersionIndex)
+        return candidates.distinctBy { it.musicId }.maxWithOrNull(
+            compareBy<BjmMusic>(
+                { it.level(chart.mode, chart.difficulty) == chart.level },
+                { chartVersion != null && it.version == chartVersion },
+                { it.version },
+            ),
+        )
+    }
+    // Preserve the full title's priority so a remix cannot be displaced by its base song.
+    // Within each title, prefer exact symbols, then confirmed aliases, then the legacy key.
+    titles.forEach { title ->
+        val exactKey = normalizeExactMusicTitle(title)
+        match(index.exactTitles[exactKey].orEmpty())?.let { return it }
+        confirmedMusicAliases[exactKey]?.let { id ->
+            index.byId[id]?.let { return it }
+        }
+        val looseKey = normalizeMusicTitle(title)
+        match(index.looseTitles[looseKey].orEmpty())?.let { return it }
+    }
+    return null
 }
