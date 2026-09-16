@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,16 +29,13 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
-import androidx.compose.material3.MultiChoiceSegmentedButtonRow
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.FilterChip
+import com.harroyuz.iidxchartviewer.domain.catalog.buildCatalogVersionOptions
+import com.harroyuz.iidxchartviewer.domain.catalog.catalogSongTypes
+import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
 import com.harroyuz.iidxchartviewer.domain.catalog.matchesCatalogFilters
 import com.harroyuz.iidxchartviewer.ui.motion.LocalBrowseMotion
 import com.harroyuz.iidxchartviewer.ui.motion.browseCatalogItem
@@ -48,7 +44,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,14 +69,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.harroyuz.iidxchartviewer.BuildConfig
 import com.harroyuz.iidxchartviewer.R
 import com.harroyuz.iidxchartviewer.domain.catalog.difficultyOrder
-import com.harroyuz.iidxchartviewer.domain.catalog.textageVersionIndex
-import com.harroyuz.iidxchartviewer.domain.catalog.versionNumber
 import com.harroyuz.iidxchartviewer.domain.model.BjmIndex
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxAppState
@@ -96,7 +88,6 @@ import com.harroyuz.iidxchartviewer.ui.theme.Ink
 import com.harroyuz.iidxchartviewer.ui.theme.Muted
 import com.harroyuz.iidxchartviewer.ui.theme.Panel
 import com.harroyuz.iidxchartviewer.ui.theme.Purple
-import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
@@ -147,10 +138,16 @@ internal fun ChartBrowserScreen(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
-    var selectedVersion by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedLevel by rememberSaveable { mutableStateOf<Int?>(null) }
-    var hideDeleted by rememberSaveable { mutableStateOf(false) }
-    var hideConsumer by rememberSaveable { mutableStateOf(false) }
+    var selectedVersions by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var selectedLevels by rememberSaveable { mutableStateOf(emptyList<Int>()) }
+    var includeDeleted by rememberSaveable { mutableStateOf(true) }
+    var includeConsumer by rememberSaveable { mutableStateOf(true) }
+    var includeCurrent by rememberSaveable { mutableStateOf(true) }
+    val selectedTypes = buildSet {
+        if (includeDeleted) add(ArcadeStatus.DELETED)
+        if (includeConsumer) add(ArcadeStatus.CONSUMER_ONLY)
+        if (includeCurrent) add(ArcadeStatus.CURRENT)
+    }
     var searchGenreEnabled by rememberSaveable { mutableStateOf(true) }
     var searchTitleEnabled by rememberSaveable { mutableStateOf(true) }
     var searchComposerEnabled by rememberSaveable { mutableStateOf(true) }
@@ -273,44 +270,8 @@ internal fun ChartBrowserScreen(
     ) {
         Box(Modifier.fillMaxSize()) {
             RetainedPage(visible = !settingsPageVisible && !bjmDataPageVisible) {
-                val maxNumericVersionIndex = remember(state.charts, mode) {
-                    state.charts
-                        .asSequence()
-                        .filter { it.mode == mode }
-                        .mapNotNull { it.textageUrl?.let(::textageVersionIndex) }
-                        .maxOrNull()
-                        ?: -1
-                }
-                val substreamSortIndex = maxNumericVersionIndex + 1
-                val versionOrder = remember(state.charts, mode) {
-                    state.charts
-                        .asSequence()
-                        .filter { it.mode == mode && it.version.isNotBlank() }
-                        .mapNotNull { chart ->
-                            val index = chart.textageUrl?.let(::textageVersionIndex)
-                                ?: chart.version.takeIf { it.equals("substream", ignoreCase = true) }
-                                    ?.let { substreamSortIndex }
-                            index?.let { chart.version to it }
-                        }
-                        .toMap()
-                }
-                val versionOptions = remember(state.charts, mode, versionOrder) {
-                    state.charts
-                        .asSequence()
-                        .filter { it.mode == mode && it.version.isNotBlank() }
-                        .map { it.version }
-                        .distinct()
-                        .sortedWith(compareBy<String>({ versionOrder[it] ?: versionNumber(it) }, { it.lowercase(Locale.US) }))
-                        .toList()
-                }
-                val levelOptions = remember(state.charts, mode) {
-                    state.charts
-                        .asSequence()
-                        .filter { it.mode == mode && it.level > 0 }
-                        .map { it.level }
-                        .distinct()
-                        .sorted()
-                        .toList()
+                val versionOptions = remember(state.charts, mode) {
+                    buildCatalogVersionOptions(state.charts.filter { it.mode == mode })
                 }
                 val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
                 val allSongs = remember(state.songGroups, state.charts, mode) {
@@ -337,17 +298,18 @@ internal fun ChartBrowserScreen(
                 val songs = remember(
                     allSongs,
                     query,
-                    selectedVersion,
-                    selectedLevel,
-                    hideDeleted,
-                    hideConsumer,
+                    selectedVersions,
+                    selectedLevels,
+                    selectedTypes,
                     searchGenreEnabled,
                     searchTitleEnabled,
                     searchComposerEnabled,
                 ) {
+                    val versions = selectedVersions.toSet()
+                    val levels = selectedLevels.toSet()
                     allSongs.mapNotNull { song ->
                         val matchingCharts = song.charts.filter {
-                            it.matchesCatalogFilters(selectedVersion, selectedLevel, hideDeleted, hideConsumer)
+                            it.matchesCatalogFilters(versions, levels, selectedTypes)
                         }
                         val searchText = buildList {
                             if (searchGenreEnabled) add(song.genre)
@@ -456,10 +418,9 @@ internal fun ChartBrowserScreen(
                                 FunnelIcon(
                                     if (
                                         filterExpanded ||
-                                        selectedVersion != null ||
-                                        selectedLevel != null ||
-                                        hideDeleted ||
-                                        hideConsumer ||
+                                        selectedVersions.isNotEmpty() ||
+                                        selectedLevels.isNotEmpty() ||
+                                        selectedTypes.size < catalogSongTypes.size ||
                                         selectedSearchDimensionCount < 3
                                     ) Purple else Muted,
                                 )
@@ -472,92 +433,54 @@ internal fun ChartBrowserScreen(
                             exit = if (visualEffectsDisabled) ExitTransition.None else
                                 shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
                         ) {
-                            Column {
-                                MultiChoiceSegmentedButtonRow(
-                                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
-                                ) {
-                                    listOf("曲风", "曲名", "曲师").forEachIndexed { index, label ->
-                                        val checked = when (index) {
-                                            0 -> searchGenreEnabled
-                                            1 -> searchTitleEnabled
-                                            else -> searchComposerEnabled
-                                        }
-                                        SegmentedButton(
-                                            checked = checked,
-                                            onCheckedChange = { value ->
-                                                // Keep the final selected search field active without dimming it.
-                                                if (value || selectedSearchDimensionCount > 1) when (index) {
-                                                    0 -> searchGenreEnabled = value
-                                                    1 -> searchTitleEnabled = value
-                                                    else -> searchComposerEnabled = value
-                                                }
-                                            },
-                                            shape = SegmentedButtonDefaults.itemShape(index, 3),
-                                        ) { Text(label, fontSize = 12.sp) }
+                            CatalogFilterPanel(
+                                searchFields = searchDimensions,
+                                onSearchFieldToggle = { field ->
+                                    when (field) {
+                                        "曲风" -> if (!searchGenreEnabled || selectedSearchDimensionCount > 1) searchGenreEnabled = !searchGenreEnabled
+                                        "曲名" -> if (!searchTitleEnabled || selectedSearchDimensionCount > 1) searchTitleEnabled = !searchTitleEnabled
+                                        "曲师" -> if (!searchComposerEnabled || selectedSearchDimensionCount > 1) searchComposerEnabled = !searchComposerEnabled
                                     }
-                                }
-                                Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    FilterDropdown(
-                                        value = selectedVersion ?: "全部版本",
-                                        options = listOf("全部版本") + versionOptions,
-                                        onSelect = { selectedVersion = it.takeUnless { option -> option == "全部版本" } },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    FilterDropdown(
-                                        value = selectedLevel?.toString() ?: "全部等级",
-                                        options = listOf("全部等级") + levelOptions.map(Int::toString),
-                                        onSelect = { selectedLevel = it.toIntOrNull() },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    TextButton(
-                                        onClick = {
-                                            selectedVersion = null
-                                            selectedLevel = null
-                                            hideDeleted = false
-                                            hideConsumer = false
-                                            searchGenreEnabled = true
-                                            searchTitleEnabled = true
-                                            searchComposerEnabled = true
-                                        },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-                                    ) { Text("重置", color = Muted, fontSize = 11.sp) }
-                                }
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    FilterChip(
-                                        selected = hideDeleted,
-                                        onClick = { hideDeleted = !hideDeleted },
-                                        label = { Text("不显示删除曲", fontSize = 12.sp) },
-                                    )
-                                    FilterChip(
-                                        selected = hideConsumer,
-                                        onClick = { hideConsumer = !hideConsumer },
-                                        label = { Text("不显示家用版", fontSize = 12.sp) },
-                                    )
-                                }
-                            }
+                                },
+                                types = selectedTypes,
+                                onTypeToggle = { type ->
+                                    when (type) {
+                                        ArcadeStatus.DELETED -> includeDeleted = !includeDeleted
+                                        ArcadeStatus.CONSUMER_ONLY -> includeConsumer = !includeConsumer
+                                        ArcadeStatus.CURRENT -> includeCurrent = !includeCurrent
+                                        ArcadeStatus.UNKNOWN -> Unit
+                                    }
+                                },
+                                levels = selectedLevels.toSet(),
+                                onLevelToggle = { selectedLevels = if (it in selectedLevels) selectedLevels - it else selectedLevels + it },
+                                versions = selectedVersions.toSet(),
+                                versionOptions = versionOptions,
+                                onVersionToggle = { selectedVersions = if (it in selectedVersions) selectedVersions - it else selectedVersions + it },
+                                onClearLevels = { selectedLevels = emptyList() },
+                                onClearVersions = { selectedVersions = emptyList() },
+                                onReset = {
+                                    selectedVersions = emptyList()
+                                    selectedLevels = emptyList()
+                                    includeDeleted = true
+                                    includeConsumer = true
+                                    includeCurrent = true
+                                    searchGenreEnabled = true
+                                    searchTitleEnabled = true
+                                    searchComposerEnabled = true
+                                },
+                                visualEffectsDisabled = visualEffectsDisabled,
+                            )
                         }
-                        val activeFilterSummary = buildString {
-                            selectedVersion?.let { append(it) }
-                            selectedLevel?.let {
-                                if (isNotEmpty()) append("，")
-                                append("LEVEL $it")
+                        val activeFilterSummary = buildList {
+                            if (selectedVersions.isNotEmpty()) {
+                                add(versionOptions.filter { it.value in selectedVersions }.joinToString(" / ") { it.label })
                             }
-                            if (hideDeleted || hideConsumer) {
-                                if (isNotEmpty()) append("，")
-                                append("不显示")
-                                append(listOfNotNull(
-                                    "删除曲".takeIf { hideDeleted },
-                                    "家用版".takeIf { hideConsumer },
-                                ).joinToString("/"))
+                            if (selectedLevels.isNotEmpty()) add("LEVEL ${selectedLevels.sorted().joinToString("/")}")
+                            if (selectedTypes.size < catalogSongTypes.size) {
+                                add(if (selectedTypes.isEmpty()) "未选择曲目类型" else
+                                    "曲目类型：${catalogSongTypes.filter { it in selectedTypes }.joinToString("/") { it.filterLabel() }}")
                             }
-                        }
+                        }.joinToString("，")
                         val collapsedFilterSummary = buildString {
                             if (selectedSearchDimensionCount < 3) {
                                 append("仅筛选${searchDimensions.joinToString("/")}")
@@ -587,8 +510,15 @@ internal fun ChartBrowserScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("没有找到匹配曲目", style = MaterialTheme.typography.titleMedium, color = Ink)
                                 Spacer(Modifier.height(8.dp))
-                                Text("试试其他关键词，或重置版本和等级筛选", style = MaterialTheme.typography.bodySmall, color = Muted)
-                                TextButton(onClick = { query = ""; selectedVersion = null; selectedLevel = null; hideDeleted = false; hideConsumer = false }) {
+                                Text("试试其他关键词，或重置筛选", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                TextButton(onClick = {
+                                    query = ""
+                                    selectedVersions = emptyList()
+                                    selectedLevels = emptyList()
+                                    includeDeleted = true
+                                    includeConsumer = true
+                                    includeCurrent = true
+                                }) {
                                     Text("清除筛选")
                                 }
                             }
@@ -674,36 +604,6 @@ private fun FunnelIcon(color: ComposeColor) {
             close()
         }
         drawPath(path, color = color, style = Stroke(width = 2f))
-    }
-}
-
-@Composable
-private fun FilterDropdown(
-    value: String,
-    options: List<String>,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember(value) { mutableStateOf(false) }
-    Box(modifier) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth().height(38.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-        ) {
-            Text(value, color = Ink, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option, fontSize = 12.sp) },
-                    onClick = {
-                        expanded = false
-                        onSelect(option)
-                    },
-                )
-            }
-        }
     }
 }
 
