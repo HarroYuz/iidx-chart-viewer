@@ -41,7 +41,6 @@ import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxAppState
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.domain.score.bjmHistoryRecordKey
-import com.harroyuz.iidxchartviewer.domain.score.difficultyIndex
 import com.harroyuz.iidxchartviewer.ui.catalog.displayTitle
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
 import com.harroyuz.iidxchartviewer.ui.components.AutoScrollingText
@@ -50,7 +49,9 @@ import com.harroyuz.iidxchartviewer.ui.components.clearFlagColor
 import com.harroyuz.iidxchartviewer.ui.components.clearFlagDetailName
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
-import com.harroyuz.iidxchartviewer.domain.score.preferredChartForScore
+import com.harroyuz.iidxchartviewer.domain.score.resolveBjmHistoryTarget
+import com.harroyuz.iidxchartviewer.domain.score.BjmHistoryTarget
+import com.harroyuz.iidxchartviewer.domain.score.buildBjmHistoryChartIndex
 import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
@@ -80,9 +81,8 @@ internal fun BjmDataScreen(
     modifier: Modifier = Modifier,
 ) {
     var logoutConfirmationVisible by remember { mutableStateOf(false) }
-    val chartsById = remember(state.charts) { state.charts.associateBy { it.id } }
     val historyCharts = remember(state.songGroups, state.charts, bjmIndex.songMusicIds) {
-        buildBjmHistoryChartIndex(state, bjmIndex, chartsById)
+        buildBjmHistoryChartIndex(state, bjmIndex)
     }
     val musicById = remember(state.bjmMusic) { state.bjmMusic.associateBy { it.musicId } }
     val historyCountByDate = remember(history) {
@@ -91,7 +91,7 @@ internal fun BjmDataScreen(
     val filteredHistory = remember(history, query, selectedDate, historyCharts, musicById) {
         val normalizedQuery = query.trim()
         history.filter { record ->
-            val chart = preferredChartForScore(record, historyCharts[record.key].orEmpty())
+            val chart = resolveBjmHistoryTarget(record, historyCharts[record.key].orEmpty()).navigationChart
             val music = musicById[record.musicId]
             val matchesQuery = normalizedQuery.isBlank() || listOf(
                 chart?.title,
@@ -203,7 +203,7 @@ internal fun BjmDataScreen(
                         items(filteredHistory, key = ::bjmHistoryRecordKey) { record ->
                             BjmHistoryRow(
                                 record = record,
-                                chart = preferredChartForScore(record, historyCharts[record.key].orEmpty()),
+                                target = resolveBjmHistoryTarget(record, historyCharts[record.key].orEmpty()),
                                 music = musicById[record.musicId],
                                 onOpenSong = onOpenSong,
                             )
@@ -236,21 +236,23 @@ internal fun BjmDataScreen(
 @Composable
 private fun BjmHistoryRow(
     record: BjmScore,
-    chart: IidxChart?,
+    target: BjmHistoryTarget,
     music: BjmMusic?,
     onOpenSong: (IidxChart) -> Unit,
 ) {
-    val title = chart?.let { displayTitle(it.title, it.sourceLabel) }
+    val chart = target.compatibleChart
+    val song = target.navigationChart
+    val title = song?.let { displayTitle(it.title, it.sourceLabel) }
         ?: music?.title?.takeIf { it.isNotBlank() }
         ?: "未知曲目"
-    val subtitle = chart?.subtitle?.takeIf { it.isNotBlank() }
+    val subtitle = song?.subtitle?.takeIf { it.isNotBlank() }
     val difficulty = chart?.let { "${it.mode} ${difficultyName(it.difficulty)} ${it.level}" }
         ?: "${if (record.playStyle == 1) "DP" else "SP"} ${difficultyName(difficultyCode(record.noteId))}"
     val rowHeight = if (subtitle != null) 72.dp else 62.dp
     Column(
         Modifier.fillMaxWidth()
             .height(rowHeight)
-            .clickable(enabled = chart != null) { chart?.let(onOpenSong) }
+            .clickable(enabled = song != null) { song?.let(onOpenSong) }
             .padding(horizontal = 20.dp, vertical = 5.dp),
     ) {
         Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
@@ -292,23 +294,5 @@ private fun BjmHistoryRow(
             }
         }
         HorizontalDivider(color = Outline)
-    }
-}
-
-private fun buildBjmHistoryChartIndex(
-    state: IidxAppState,
-    bjmIndex: BjmIndex,
-    chartsById: Map<String, IidxChart>,
-): Map<String, List<IidxChart>> = buildMap {
-    state.songGroups.forEach { group ->
-        val musicId = bjmIndex.songMusicIds[group.key] ?: return@forEach
-        group.chartIds
-            .mapNotNull { chartsById[it] }
-            .groupBy { chart ->
-                "$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}"
-            }
-            .forEach { (key, candidates) ->
-                put(key, (get(key).orEmpty() + candidates).distinctBy { it.id })
-            }
     }
 }

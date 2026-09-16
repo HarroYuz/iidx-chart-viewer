@@ -49,6 +49,7 @@ import com.harroyuz.iidxchartviewer.domain.model.ChartRadar
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.domain.model.RadarAxis
 import com.harroyuz.iidxchartviewer.domain.score.difficultyIndex
+import com.harroyuz.iidxchartviewer.domain.catalog.initialRadarChart
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.motion.browseReveal
@@ -63,6 +64,7 @@ import kotlin.math.sin
 @Composable
 internal fun ChartRadarPanel(
     songKey: String,
+    initialDifficulty: String?,
     charts: List<IidxChart>,
     musicId: Int?,
     mode: String,
@@ -72,10 +74,10 @@ internal fun ChartRadarPanel(
     error: String?,
     onRetry: () -> Unit,
 ) {
-    var selectedId by rememberSaveable(songKey, mode) {
-        mutableStateOf(charts.firstOrNull { it.difficulty == "A" }?.id ?: charts.lastOrNull()?.id)
+    var selectedId by rememberSaveable(songKey, mode, initialDifficulty) {
+        mutableStateOf(initialRadarChart(charts, initialDifficulty)?.id)
     }
-    val selected = charts.firstOrNull { it.id == selectedId } ?: charts.lastOrNull()
+    val selected = charts.firstOrNull { it.id == selectedId } ?: initialRadarChart(charts, initialDifficulty)
     val key = selected?.let { "$musicId:${if (mode == "DP") 1 else 0}:${difficultyIndex(it.difficulty)}" }
     val noteCount = metadata?.noteCounts?.get(key)
     val matchesVersion = selected != null && noteCount != null && noteCount == selected.notes &&

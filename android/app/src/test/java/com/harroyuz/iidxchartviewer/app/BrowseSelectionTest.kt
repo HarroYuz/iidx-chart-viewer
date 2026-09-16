@@ -33,4 +33,10 @@ class BrowseSelectionTest {
         assertEquals(sp, detail.openChart(sp).back().song)
         assertEquals(BrowseSelection(), detail.back())
     }
+    @Test fun historicalRadarPreferenceSurvivesPlayerNavigationAndClearsWhenLeavingTheSong() {
+        val initial = BrowseSelection(song = sp, initialRadarDifficulty = "H")
+        assertEquals("H", initial.openChart(sp).back().initialRadarDifficulty)
+        assertNull(initial.back().initialRadarDifficulty)
+        assertNull(BrowseSelection(song = sp).initialRadarDifficulty)
+    }
 }

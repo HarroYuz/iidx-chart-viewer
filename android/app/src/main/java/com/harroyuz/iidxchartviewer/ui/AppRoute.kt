@@ -21,6 +21,7 @@ internal fun AppRoute(viewModel: AppViewModel) {
             bjmMusicLastSyncAt = bjmMusicLastSyncAt,
             bjmScoresLastSyncAt = bjmScoresLastSyncAt,
             selectedSong = selectedSong,
+            initialRadarDifficulty = initialRadarDifficulty,
             selectedChart = selectedChart,
             chartData = selectedChartData,
             chartLoading = chartLoading,

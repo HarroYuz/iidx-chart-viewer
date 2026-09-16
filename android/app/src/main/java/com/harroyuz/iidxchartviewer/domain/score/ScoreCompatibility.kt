@@ -30,3 +30,15 @@ internal fun preferredChartForScore(
 ): IidxChart? = candidates
     .filter { score.matchesChartNotes(it.notes) }
     .maxWithOrNull(preferredChartOrder)
+
+internal data class BjmHistoryTarget(val navigationChart: IidxChart?, val compatibleChart: IidxChart?)
+
+/** Song navigation only requires a known music/style/difficulty; score attachment still requires NOTE evidence. */
+internal fun resolveBjmHistoryTarget(score: BjmScore, candidates: List<IidxChart>): BjmHistoryTarget {
+    if (score.playStyle !in 0..1 || score.noteId !in 0..4) return BjmHistoryTarget(null, null)
+    val sameDifficulty = candidates.filter {
+        it.mode == (if (score.playStyle == 1) "DP" else "SP") && difficultyIndex(it.difficulty) == score.noteId
+    }
+    val compatible = preferredChartForScore(score, sameDifficulty)
+    return BjmHistoryTarget(compatible ?: sameDifficulty.maxWithOrNull(preferredChartOrder), compatible)
+}

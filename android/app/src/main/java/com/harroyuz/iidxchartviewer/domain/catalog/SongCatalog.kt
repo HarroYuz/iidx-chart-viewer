@@ -126,3 +126,9 @@ internal fun findBjmMusic(chart: IidxChart, index: BjmMusicLookup): BjmMusic? {
     }
     return null
 }
+
+/** A history entry chooses its difficulty; ordinary catalog entry keeps the ANOTHER default. */
+internal fun initialRadarChart(charts: List<IidxChart>, preferredDifficulty: String?): IidxChart? =
+    charts.firstOrNull { it.difficulty == preferredDifficulty }
+        ?: charts.firstOrNull { it.difficulty == "A" }
+        ?: charts.lastOrNull()

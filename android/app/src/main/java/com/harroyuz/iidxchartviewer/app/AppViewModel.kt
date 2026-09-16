@@ -37,6 +37,7 @@ import com.harroyuz.iidxchartviewer.domain.catalog.difficultyOrder
 import com.harroyuz.iidxchartviewer.domain.player.PlayerSettings
 import com.harroyuz.iidxchartviewer.domain.score.withNoteReference
 import com.harroyuz.iidxchartviewer.domain.score.appendBjmHistory
+import com.harroyuz.iidxchartviewer.domain.score.refreshBjmHistoryReferences
 import com.harroyuz.iidxchartviewer.domain.score.buildBjmIndex
 import com.harroyuz.iidxchartviewer.domain.score.isPersistedBjmIndexUsable
 import com.harroyuz.iidxchartviewer.domain.score.rebuildBjmCatalogIndex
@@ -113,6 +114,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     private var chartLoadRequest = 0L
     private var browseSelection by mutableStateOf(BrowseSelection())
     internal val selectedSong: IidxChart? get() = browseSelection.song
+    internal val initialRadarDifficulty: String? get() = browseSelection.initialRadarDifficulty
     internal val selectedChart: IidxChart? get() = browseSelection.chart
     internal var selectedChartData by mutableStateOf<TextageChartData?>(null)
         private set
@@ -163,7 +165,9 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
                 val loadedFromDisk = store.load()
                 BjmAuthDiagnostics.event("startup version=${BuildConfig.VERSION_NAME} sdk=${android.os.Build.VERSION.SDK_INT} persistedUser=${loadedFromDisk.bjmUser != null}")
                 BjmAuthDiagnostics.cookies("startup")
-                val loadedBjmHistory = store.loadBjmHistory()
+                val storedHistory = store.loadBjmHistory()
+                val loadedBjmHistory = refreshBjmHistoryReferences(storedHistory, loadedFromDisk.bjmScores)
+                if (loadedBjmHistory != storedHistory) store.saveBjmHistory(loadedBjmHistory)
                 val loadedChartMetadata = chartMetadataRepository.loadCached()
                 // Startup is entirely local: a failed network check must never erase a session.
                 val authenticatedState = loadedFromDisk
@@ -800,7 +804,10 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     internal fun openSong(chart: IidxChart, fromBjmHistory: Boolean? = null) {
         cancelChartLoad()
         fromBjmHistory?.let { returnToBjmHistory = it }
-        browseSelection = BrowseSelection(song = chart)
+        browseSelection = BrowseSelection(
+            song = chart,
+            initialRadarDifficulty = chart.difficulty.takeIf { fromBjmHistory == true },
+        )
         selectedChartData = null
         chartLoading = false
     }

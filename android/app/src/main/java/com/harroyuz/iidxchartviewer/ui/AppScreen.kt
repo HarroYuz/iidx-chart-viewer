@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,7 @@ private data class BrowsePage(
     val chart: IidxChart?,
     val chartData: TextageChartData?,
     val chartLoading: Boolean,
+    val initialRadarDifficulty: String?,
 ) {
     val key: String get() = when {
         chart != null -> "chart"
@@ -88,6 +90,7 @@ internal fun IidxApp(
     bjmMusicLastSyncAt: Long,
     bjmScoresLastSyncAt: Long,
     selectedSong: IidxChart?,
+    initialRadarDifficulty: String?,
     selectedChart: IidxChart?,
     chartData: TextageChartData?,
     chartLoading: Boolean,
@@ -163,7 +166,14 @@ internal fun IidxApp(
             } else {
                 val pageState = rememberSaveableStateHolder()
                 val showingDetail = selectedSong != null || selectedChart != null
-                val currentPage = BrowsePage(selectedSong, selectedChart, chartData, chartLoading)
+                val currentPage = BrowsePage(selectedSong, selectedChart, chartData, chartLoading, initialRadarDifficulty)
+                LaunchedEffect(currentPage.key) {
+                    if (currentPage.key == "browser") {
+                        // Preserve the list snapshot, but start each new detail visit with its requested difficulty.
+                        pageState.removeState("song")
+                        pageState.removeState("chart")
+                    }
+                }
                 BackHandler(showingDetail, onBack = onBack)
                 SharedTransitionLayout(Modifier.fillMaxSize().clipToBounds()) {
                     val pageTransition = updateTransition(currentPage, label = "browse")
@@ -322,6 +332,7 @@ internal fun IidxApp(
                                             .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
                                         SongDetailScreen(
                                             song = selectedSong,
+                                            initialRadarDifficulty = page.initialRadarDifficulty,
                                             chartMetadata = chartMetadata,
                                             chartMetadataLoading = chartMetadataLoading,
                                             visualEffectsDisabled = visualEffectsDisabled,

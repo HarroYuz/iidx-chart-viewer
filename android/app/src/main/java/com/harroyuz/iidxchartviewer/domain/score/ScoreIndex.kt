@@ -80,3 +80,16 @@ internal fun isPersistedBjmIndexUsable(
     if (state.bjmScores.isNotEmpty() && index.scoresByKey.isEmpty()) return false
     return true
 }
+
+/** Reverse the same song/music links used by the catalog, including confirmed title aliases. */
+internal fun buildBjmHistoryChartIndex(state: IidxAppState, bjmIndex: BjmIndex): Map<String, List<IidxChart>> {
+    val chartsById = state.charts.associateBy { it.id }
+    return buildMap {
+        state.songGroups.forEach { group ->
+            val musicId = bjmIndex.songMusicIds[group.key] ?: return@forEach
+            group.chartIds.mapNotNull { chartsById[it] }
+                .groupBy { chart -> "$musicId:${if (chart.mode == "DP") 1 else 0}:${difficultyIndex(chart.difficulty)}" }
+                .forEach { (key, candidates) -> put(key, (get(key).orEmpty() + candidates).distinctBy { it.id }) }
+        }
+    }
+}

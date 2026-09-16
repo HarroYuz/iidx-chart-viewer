@@ -6,6 +6,7 @@ import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 internal data class BrowseSelection(
     val song: IidxChart? = null,
     val chart: IidxChart? = null,
+    val initialRadarDifficulty: String? = null,
 ) {
     fun openChart(next: IidxChart): BrowseSelection =
         copy(song = if (song == null) null else next, chart = next)

@@ -44,6 +44,7 @@ import com.harroyuz.iidxchartviewer.ui.theme.Muted
 @Composable
 internal fun SongDetailScreen(
     song: IidxChart,
+    initialRadarDifficulty: String?,
     chartMetadata: BjmChartMetadata?,
     chartMetadataLoading: Boolean,
     visualEffectsDisabled: Boolean,
@@ -94,6 +95,7 @@ internal fun SongDetailScreen(
                 item(key = "radar") {
                     ChartRadarPanel(
                         songKey = songGroupKey(song),
+                        initialDifficulty = initialRadarDifficulty,
                         charts = charts,
                         musicId = bjmIndex.songMusicIds[songGroupKey(song)],
                         mode = mode,
