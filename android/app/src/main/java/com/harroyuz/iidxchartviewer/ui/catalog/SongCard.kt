@@ -1,6 +1,5 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
-import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
 import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,35 +29,22 @@ import com.harroyuz.iidxchartviewer.ui.components.DifficultyBackground
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.PlatformTextStyle
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.harroyuz.iidxchartviewer.domain.model.BjmIndex
 import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.domain.score.listScoreRankName
-import com.harroyuz.iidxchartviewer.ui.components.CopyableText
 import com.harroyuz.iidxchartviewer.ui.components.clearFlagColor
 import com.harroyuz.iidxchartviewer.ui.components.clearFlagShortName
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.scoreForChart
-import com.harroyuz.iidxchartviewer.ui.theme.Background
 import com.harroyuz.iidxchartviewer.ui.theme.CardSurface
 import com.harroyuz.iidxchartviewer.ui.theme.Ink
-import com.harroyuz.iidxchartviewer.ui.theme.Muted
-import com.harroyuz.iidxchartviewer.ui.theme.NormalBlue
 import com.harroyuz.iidxchartviewer.ui.theme.Outline
 
 @Composable
@@ -97,46 +83,18 @@ private fun SongGroupContent(
             .clickable(enabled = representative != null) { representative?.let(onOpenSong) }
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f).browseSharedBounds(representative?.let { "song-info:${songGroupKey(it)}" }).padding(end = 10.dp)) {
-                CopyableText(
-                    text = song.genre.ifBlank { "未知曲风" },
-                    color = Muted,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    onCopy = onCopyText,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (song.subtitle.isNotBlank()) {
-                    Text(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    song.composer.ifBlank { "未知曲师" },
-                    color = Muted,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                ChartVersionLabel(song.version, representative?.arcadeStatus, Modifier.browseSharedBounds(representative?.let { "version:${songGroupKey(it)}" }))
-                Text(
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = Muted)) { append("BPM ") }
-                        withStyle(SpanStyle(color = NormalBlue)) {
-                            append(song.charts.firstOrNull()?.bpm?.ifBlank { "—" } ?: "—")
-                        }
-                    },
-                    modifier = Modifier.browseSharedBounds(representative?.let { "bpm:${songGroupKey(it)}" }),
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+        SongInfoHeader(
+            title = song.title,
+            sourceLabel = song.sourceLabel,
+            subtitle = song.subtitle,
+            genre = song.genre,
+            composer = song.composer,
+            version = song.version,
+            status = representative?.arcadeStatus,
+            bpm = song.charts.firstOrNull()?.bpm.orEmpty(),
+            songKey = representative?.let(::songGroupKey),
+            onCopyText = onCopyText,
+        )
         Spacer(Modifier.height(7.dp))
         Row(
             Modifier.fillMaxWidth().heightIn(min = 44.dp).horizontalScroll(rememberScrollState()),

@@ -473,7 +473,7 @@ internal fun ChartBrowserScreen(
                         }
                         val activeFilterSummary = buildList {
                             if (selectedVersions.isNotEmpty()) {
-                                add(versionOptions.filter { it.value in selectedVersions }.joinToString(" / ") { it.label })
+                                add("版本 ${versionOptions.filter { it.value in selectedVersions }.joinToString("/") { it.abbreviation }}")
                             }
                             if (selectedLevels.isNotEmpty()) add("LEVEL ${selectedLevels.sorted().joinToString("/")}")
                             if (selectedTypes.size < catalogSongTypes.size) {
@@ -483,7 +483,7 @@ internal fun ChartBrowserScreen(
                         }.joinToString("，")
                         val collapsedFilterSummary = buildString {
                             if (selectedSearchDimensionCount < 3) {
-                                append("仅筛选${searchDimensions.joinToString("/")}")
+                                append("仅搜索${searchDimensions.joinToString("/")}")
                             }
                             if (activeFilterSummary.isNotBlank()) {
                                 if (isNotEmpty()) append("，")

@@ -47,10 +47,12 @@ class CatalogFilterTest {
         val options = buildCatalogVersionOptions(samples + samples.first())
         assertEquals(listOf("Consumer Only", "substream", "1st style", "10th style", "11 IIDX RED", "31 EPOLIS", "32 Pinky Crush", "33 Sparkle Shower"), options.map { it.label })
         assertEquals("Consumer only", options.first().value)
+        assertEquals(listOf("CS", "sub", "1", "10", "11", "31", "32", "33"), options.map { it.abbreviation })
     }
 
     @Test fun unavailableChartUrlsDoNotDropVersionOptionsOrInventNumbers() {
         val options = buildCatalogVersionOptions(listOf(chart.copy(version = "substream"), chart.copy(version = "Consumer only"), chart.copy(version = "Legacy")))
         assertEquals(listOf("Consumer Only", "substream", "Legacy"), options.map { it.label })
+        assertEquals(listOf("CS", "sub", "Legacy"), options.map { it.abbreviation })
     }
 }

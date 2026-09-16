@@ -36,13 +36,10 @@ import com.harroyuz.iidxchartviewer.domain.model.TextageChartData
 import com.harroyuz.iidxchartviewer.domain.player.PlayerSettings
 import com.harroyuz.iidxchartviewer.domain.score.scoreRankName
 import com.harroyuz.iidxchartviewer.ui.catalog.DifficultyChip
-import com.harroyuz.iidxchartviewer.ui.catalog.displayTitle
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
-import com.harroyuz.iidxchartviewer.ui.components.AutoScrollingText
 import com.harroyuz.iidxchartviewer.ui.components.ChartLoadError
 import com.harroyuz.iidxchartviewer.ui.components.ChartParseWarning
-import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
-import com.harroyuz.iidxchartviewer.ui.components.DetailStat
+import com.harroyuz.iidxchartviewer.ui.catalog.SongInfoHeader
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
 import com.harroyuz.iidxchartviewer.ui.components.StrokedText
 import com.harroyuz.iidxchartviewer.ui.components.clearFlagColor
@@ -53,7 +50,6 @@ import com.harroyuz.iidxchartviewer.ui.components.rankDeltaColor
 import com.harroyuz.iidxchartviewer.ui.components.rankDeltaText
 import com.harroyuz.iidxchartviewer.ui.components.hasUnmatchedScore
 import com.harroyuz.iidxchartviewer.ui.components.scoreForChart
-import com.harroyuz.iidxchartviewer.ui.theme.Ink
 import com.harroyuz.iidxchartviewer.ui.theme.Muted
 import com.harroyuz.iidxchartviewer.ui.theme.NormalBlue
 import com.harroyuz.iidxchartviewer.ui.theme.Purple
@@ -80,26 +76,21 @@ internal fun ChartDetailScreen(
             AppTopBar(title = "谱面浏览", onNavigate = onBack) {
                 PlayStyleButton(mode, onStyleToggle)
             }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(chart)}", stableInDetails = true).padding(end = 12.dp)) {
-                    AutoScrollingText(chart.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(chart.genre) })
-                    Spacer(Modifier.height(3.dp))
-                    AutoScrollingText(displayTitle(chart.title, chart.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(chart.title) })
-                    if (chart.subtitle.isNotBlank()) {
-                        AutoScrollingText(chart.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    AutoScrollingText(chart.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(chart.composer) })
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    ChartVersionLabel(chart.version, chart.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(chart)}", stableInDetails = true), detail = true)
-                    DetailStat("BPM ", chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(chart)}", stableInDetails = true))
-                    DetailStat("NOTES ", (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—", Modifier.browseReveal())
-                }
-            }
+            SongInfoHeader(
+                title = chart.title,
+                sourceLabel = chart.sourceLabel,
+                subtitle = chart.subtitle,
+                genre = chart.genre,
+                composer = chart.composer,
+                version = chart.version,
+                status = chart.arcadeStatus,
+                bpm = chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm,
+                songKey = songGroupKey(chart),
+                onCopyText = onCopyText,
+                modifier = Modifier.padding(horizontal = 20.dp),
+                detail = true,
+                notes = (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—",
+            )
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Column(Modifier.weight(1f)) {

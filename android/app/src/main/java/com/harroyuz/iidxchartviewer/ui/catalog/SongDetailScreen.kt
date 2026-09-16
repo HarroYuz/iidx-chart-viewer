@@ -33,16 +33,12 @@ import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
-import com.harroyuz.iidxchartviewer.ui.components.AutoScrollingText
-import com.harroyuz.iidxchartviewer.ui.components.ChartVersionLabel
-import com.harroyuz.iidxchartviewer.ui.components.DetailStat
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
 import com.harroyuz.iidxchartviewer.ui.components.hasUnmatchedScore
 import com.harroyuz.iidxchartviewer.ui.components.scoreForChart
 import com.harroyuz.iidxchartviewer.ui.theme.Background
-import com.harroyuz.iidxchartviewer.ui.theme.Ink
 import com.harroyuz.iidxchartviewer.ui.theme.Muted
 
 @Composable
@@ -67,25 +63,20 @@ internal fun SongDetailScreen(
             AppTopBar(title = "曲目信息", onNavigate = onBack) {
                 PlayStyleButton(mode, onStyleToggle)
             }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(Modifier.weight(1f).browseSharedBounds("song-info:${songGroupKey(song)}", stableInDetails = true).padding(end = 12.dp)) {
-                    AutoScrollingText(song.genre.ifBlank { "未知曲风" }, color = Muted, fontSize = 10.sp, onLongPress = { onCopyText(song.genre) })
-                    Spacer(Modifier.height(3.dp))
-                    AutoScrollingText(displayTitle(song.title, song.sourceLabel), color = Ink, fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, onLongPress = { onCopyText(song.title) })
-                    if (song.subtitle.isNotBlank()) {
-                        AutoScrollingText(song.subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    AutoScrollingText(song.composer.ifBlank { "未知曲师" }, color = Muted, fontSize = 13.sp, onLongPress = { onCopyText(song.composer) })
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    ChartVersionLabel(song.version, song.arcadeStatus, Modifier.browseSharedBounds("version:${songGroupKey(song)}", stableInDetails = true), detail = true)
-                    DetailStat("BPM ", song.bpm.ifBlank { "—" }, Modifier.browseSharedBounds("bpm:${songGroupKey(song)}", stableInDetails = true))
-                }
-            }
+            SongInfoHeader(
+                title = song.title,
+                sourceLabel = song.sourceLabel,
+                subtitle = song.subtitle,
+                genre = song.genre,
+                composer = song.composer,
+                version = song.version,
+                status = song.arcadeStatus,
+                bpm = song.bpm,
+                songKey = songGroupKey(song),
+                onCopyText = onCopyText,
+                modifier = Modifier.padding(horizontal = 20.dp),
+                detail = true,
+            )
             Spacer(Modifier.height(12.dp))
             LazyColumn(
                 Modifier.fillMaxWidth().weight(1f),

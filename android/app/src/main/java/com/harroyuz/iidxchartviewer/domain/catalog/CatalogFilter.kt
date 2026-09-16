@@ -15,7 +15,14 @@ internal fun IidxChart.matchesCatalogFilters(
         // Unknown metadata remains visible only when the user has not restricted song types.
         (arcadeStatus in types || (arcadeStatus == ArcadeStatus.UNKNOWN && types.containsAll(catalogSongTypes)))
 
-internal data class CatalogVersionOption(val value: String, val label: String, val order: Int)
+internal data class CatalogVersionOption(val value: String, val label: String, val order: Int) {
+    val abbreviation: String get() = when (order) {
+        -1 -> "CS"
+        0 -> "sub"
+        in 1 until Int.MAX_VALUE -> order.toString()
+        else -> value
+    }
+}
 
 internal fun buildCatalogVersionOptions(charts: List<IidxChart>): List<CatalogVersionOption> =
     charts.filter { it.version.isNotBlank() }.groupBy { it.version }.map { (version, members) ->
