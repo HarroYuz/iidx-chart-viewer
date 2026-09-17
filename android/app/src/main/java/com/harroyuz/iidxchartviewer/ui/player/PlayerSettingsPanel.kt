@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import com.harroyuz.iidxchartviewer.domain.player.stepHiSpeed
 import java.util.Locale
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +84,13 @@ internal fun PlayerConfigBox(
     onRotaryEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Preserve the content's measurement while AnimatedVisibility shrinks it.
+    // The parent switches to its collapsed height immediately on close.
+    var expandedHeightLimit by remember { mutableStateOf(maximumPanelHeight) }
+    LaunchedEffect(expanded, maximumPanelHeight) {
+        if (expanded) expandedHeightLimit = maximumPanelHeight
+    }
+    val heightLimit = if (expanded) maximumPanelHeight else expandedHeightLimit
     val shape = RoundedCornerShape(10.dp)
     val isFloating = settings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING
     val activeSpeedValue = if (isFloating) settings.safeGreenNumber.toString() else String.format(Locale.US, "%.2f", settings.safeSpeed)
@@ -103,7 +111,7 @@ internal fun PlayerConfigBox(
         if (!isSp && settings.flip) append(", FLIP")
     }
     Column(
-        modifier.fillMaxWidth().heightIn(max = maximumPanelHeight)
+        modifier.fillMaxWidth().heightIn(max = heightLimit)
             .clip(shape)
             .background(Panel)
             .border(1.dp, ComposeColor(0xFFD8D6E1), shape),
@@ -174,9 +182,13 @@ internal fun PlayerConfigBox(
                         onRotaryEnd = onRotaryEnd,
                     )
                 }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlayerChoice("流速不随BPM变化", settings.keepSpeedAcrossBpm, { onSettingsChange(settings.copy(keepSpeedAcrossBpm = !settings.keepSpeedAcrossBpm)) })
-                }
+                Text(
+                    "长按流速或高度数值，旋转调节",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 4.dp),
+                )
                 if (!isSp) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         PlayerChoice("FLIP", settings.flip, { onSettingsChange(settings.copy(flip = !settings.flip)) })
@@ -254,6 +266,11 @@ internal fun PlayerConfigBox(
                             onMappingChange = { onSettingsChange(settings.copy(randomMapping2P = it)) },
                         )
                     }
+                }
+                // Keep future app-specific gameplay options together in this section.
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("特殊：", color = Muted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
+                    PlayerChoice("流速不随BPM变化", settings.keepSpeedAcrossBpm, { onSettingsChange(settings.copy(keepSpeedAcrossBpm = !settings.keepSpeedAcrossBpm)) })
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("显示：", color = Muted, fontSize = 11.sp, modifier = Modifier.width(46.dp))
