@@ -141,6 +141,13 @@ internal fun PlayerConfigBox(
             exit = if (visualEffectsDisabled) ExitTransition.None else shrinkVertically(tween(160)) + fadeOut(tween(100)),
         ) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
+                Text(
+                    "长按流速或高度数值，旋转调节",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.align(Alignment.End).padding(start = 10.dp, end = 10.dp, bottom = 4.dp),
+                )
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("流速:", color = Muted, fontSize = 11.sp, modifier = Modifier.width(34.dp))
                     PlayerSpeedModeChoice("Floating Hi-Speed", isFloating) { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_FLOATING)) }
@@ -181,18 +188,6 @@ internal fun PlayerConfigBox(
                         onRotaryMove = onRotaryMove,
                         onRotaryEnd = onRotaryEnd,
                     )
-                }
-                Text(
-                    "长按流速或高度数值，旋转调节",
-                    color = Muted,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp,
-                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 4.dp),
-                )
-                if (!isSp) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlayerChoice("FLIP", settings.flip, { onSettingsChange(settings.copy(flip = !settings.flip)) })
-                    }
                 }
                 if (isSp) {
                     PlayerSettingChoiceRow(
@@ -271,6 +266,10 @@ internal fun PlayerConfigBox(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("特殊：", color = Muted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
                     PlayerChoice("流速不随BPM变化", settings.keepSpeedAcrossBpm, { onSettingsChange(settings.copy(keepSpeedAcrossBpm = !settings.keepSpeedAcrossBpm)) })
+                    if (!isSp) {
+                        Spacer(Modifier.width(4.dp))
+                        PlayerChoice("FLIP", settings.flip, { onSettingsChange(settings.copy(flip = !settings.flip)) })
+                    }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("显示：", color = Muted, fontSize = 11.sp, modifier = Modifier.width(46.dp))
