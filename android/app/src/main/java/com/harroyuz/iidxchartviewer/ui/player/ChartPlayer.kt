@@ -1,14 +1,18 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.Dp
 import com.harroyuz.iidxchartviewer.domain.player.*
@@ -23,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Slider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.State
@@ -88,6 +93,7 @@ private fun PlayerLiveStats(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlayerTimeline(
     data: TextageChartData,
@@ -133,6 +139,16 @@ private fun PlayerTimeline(
                 onPlayingChange(false)
                 onSeek(data.beatAtSeconds(it * totalSeconds).coerceIn(0f, duration))
             },
+            thumb = {
+                Box(Modifier.size(4.dp, 20.dp).background(Purple, RoundedCornerShape(2.dp)))
+            },
+            track = { sliderState ->
+                // A continuous track avoids the default thumb gap hiding early progress.
+                Canvas(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))) {
+                    drawRect(Purple.copy(alpha = 0.18f))
+                    drawRect(Purple, size = Size(size.width * sliderState.value.coerceIn(0f, 1f), size.height))
+                }
+            },
             modifier = Modifier.fillMaxWidth().height(24.dp),
         )
     }
@@ -151,6 +167,7 @@ internal fun ChartPlayer(
 ) {
     var playing by remember(data.chart.id) { mutableStateOf(false) }
     val currentBeatState = remember(data.chart.id) { mutableStateOf(0f) }
+    var beatBeforeConfig by remember(data.chart.id) { mutableStateOf<Float?>(null) }
     var previewSettings by remember(data.chart.id) { mutableStateOf<PlayerSettings?>(null) }
     val activeSettings = previewSettings ?: settings
     val safeSpeed = activeSettings.safeSpeed
@@ -177,11 +194,19 @@ internal fun ChartPlayer(
         rotary = null
     }
     BackHandler(rotaryKind != null) { finishRotary() }
-    LaunchedEffect(configExpanded) {
+    LaunchedEffect(data.chart.id, configExpanded) {
         if (configExpanded) {
+            beatBeforeConfig = currentBeatState.value
             currentBeatState.value = 0f
             playing = true
-        } else if (rotaryKind != null) finishRotary()
+        } else {
+            if (rotaryKind != null) finishRotary()
+            beatBeforeConfig?.let { savedBeat ->
+                playing = false
+                currentBeatState.value = savedBeat
+                beatBeforeConfig = null
+            }
+        }
     }
     val duration = data.durationBeats.coerceAtLeast(4f)
     val totalMeasures = data.measureCount().coerceAtLeast(1)
@@ -191,6 +216,8 @@ internal fun ChartPlayer(
         var lastFrameNanos = 0L
         while (isActive) {
             val frameNanos = withFrameNanos { it }
+            // A restored position must not advance while effect cancellation is pending.
+            if (!playing) break
             if (lastFrameNanos == 0L) {
                 lastFrameNanos = frameNanos
                 continue
