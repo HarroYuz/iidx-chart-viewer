@@ -291,6 +291,7 @@ internal fun IidxApp(
                                             chartData = page.chartData,
                                             loading = page.chartLoading,
                                             playerSettings = if (selectedChart.mode == "DP") dpPlayerSettings else spPlayerSettings,
+                                            visualEffectsDisabled = visualEffectsDisabled,
                                             onBack = onBack,
                                             onRetry = onRetryChart,
                                             mode = selectedChart.mode,

@@ -1,7 +1,13 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
 import com.harroyuz.iidxchartviewer.ui.history.formatBjmHistoryTime
-import androidx.compose.runtime.remember
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.runtime.*
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import com.harroyuz.iidxchartviewer.ui.theme.Background
 import androidx.compose.foundation.horizontalScroll
@@ -62,6 +68,7 @@ internal fun ChartDetailScreen(
     chartData: TextageChartData?,
     loading: Boolean,
     playerSettings: PlayerSettings,
+    visualEffectsDisabled: Boolean,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     mode: String,
@@ -70,58 +77,71 @@ internal fun ChartDetailScreen(
     onCopyText: (String) -> Unit,
     onPlayerSettingsChange: (PlayerSettings) -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
+    var configExpanded by remember(chart.id) { mutableStateOf(false) }
+    var headerHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    BackHandler(configExpanded) { configExpanded = false }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val collapsedPlayerHeight = (maxHeight - headerHeight).coerceAtLeast(0.dp)
         Box(Modifier.matchParentSize().browseSongSurface("song-surface:${songGroupKey(chart)}").background(Background))
         Column(Modifier.fillMaxSize()) {
-            AppTopBar(title = "谱面浏览", onNavigate = onBack) {
-                PlayStyleButton(mode, onStyleToggle)
-            }
-            SongInfoHeader(
-                title = chart.title,
-                sourceLabel = chart.sourceLabel,
-                subtitle = chart.subtitle,
-                genre = chart.genre,
-                composer = chart.composer,
-                version = chart.version,
-                status = chart.arcadeStatus,
-                bpm = chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm,
-                songKey = songGroupKey(chart),
-                onCopyText = onCopyText,
-                modifier = Modifier.padding(horizontal = 20.dp),
-                detail = true,
-                notes = (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—",
-            )
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
-                            color = difficultyColor(chart.difficulty),
-                            fontSize = 10.sp,
-                            letterSpacing = .8.sp,
-                        )
-                        Spacer(Modifier.height(7.dp))
-                        Row(
-                            Modifier.fillMaxWidth().height(34.dp).horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.Bottom,
-                        ) {
-                            siblingCharts.forEach { sibling ->
-                                DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id, sharedDifficulty = true)
-                            }
-                        }
+            AnimatedVisibility(
+                visible = !configExpanded,
+                enter = if (visualEffectsDisabled) EnterTransition.None else expandVertically(tween(160), expandFrom = Alignment.Top) + fadeIn(tween(120)),
+                exit = if (visualEffectsDisabled) ExitTransition.None else shrinkVertically(tween(160), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
+            ) {
+                Column(Modifier.onSizeChanged { headerHeight = with(density) { it.height.toDp() } }) {
+                    AppTopBar(title = "谱面浏览", onNavigate = onBack) {
+                        PlayStyleButton(mode, onStyleToggle)
                     }
-                    Spacer(Modifier.width(10.dp))
-                    ChartScoreSummary(
-                        score = scoreForChart(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
-                        showTime = true,
-                        unmatchedScore = hasUnmatchedScore(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
-                        noteCount = chartData?.chart?.notes ?: chart.notes,
-                        modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
+                    SongInfoHeader(
+                        title = chart.title,
+                        sourceLabel = chart.sourceLabel,
+                        subtitle = chart.subtitle,
+                        genre = chart.genre,
+                        composer = chart.composer,
+                        version = chart.version,
+                        status = chart.arcadeStatus,
+                        bpm = chartData?.chart?.bpm?.ifBlank { chart.bpm } ?: chart.bpm,
+                        songKey = songGroupKey(chart),
+                        onCopyText = onCopyText,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        detail = true,
+                        notes = (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—",
                     )
-                }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "${chart.mode} ${difficultyName(chart.difficulty)} ${chart.level}${chart.score?.let { " · EX $it" } ?: ""}",
+                                    color = difficultyColor(chart.difficulty),
+                                    fontSize = 10.sp,
+                                    letterSpacing = .8.sp,
+                                )
+                                Spacer(Modifier.height(7.dp))
+                                Row(
+                                    Modifier.fillMaxWidth().height(34.dp).horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.Bottom,
+                                ) {
+                                    siblingCharts.forEach { sibling ->
+                                        DifficultyChip(sibling, onOpenChart, selected = sibling.id == chart.id, sharedDifficulty = true)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            ChartScoreSummary(
+                                score = scoreForChart(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
+                                showTime = true,
+                                unmatchedScore = hasUnmatchedScore(chart, bjmIndex, chartData?.chart?.notes ?: chart.notes),
+                                noteCount = chartData?.chart?.notes ?: chart.notes,
+                                modifier = Modifier.browseSharedBounds("score:${chart.id}", stable = true),
+                            )
+                  }
             }
             Spacer(Modifier.height(16.dp))
+                }
+            }
 
             Box(Modifier.fillMaxWidth().weight(1f).browseReveal(fromBottom = true).background(Background)) {
                 when {
@@ -137,10 +157,14 @@ internal fun ChartDetailScreen(
                     else -> ChartPlayer(
                         data = chartData,
                         settings = playerSettings,
+                        configExpanded = configExpanded,
+                        onConfigExpandedChange = { configExpanded = it },
+                        collapsedPlayerHeight = collapsedPlayerHeight,
+                        visualEffectsDisabled = visualEffectsDisabled,
                         onSettingsChange = onPlayerSettingsChange,
                         modifier = Modifier.fillMaxSize(),
                     )
-                }
+                  }
             }
         }
     }
@@ -175,7 +199,7 @@ internal fun ChartScoreSummary(
                         Text(it.toString(), color = NormalBlue, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                         Text(" BP)", color = Muted, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                     }
-                }
+                  }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(score.exScore.toString(), color = NormalBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)

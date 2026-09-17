@@ -24,7 +24,7 @@ class PlayerSettingsTest {
         val judgeDistance = 331.2f
         val pixelsPerBeat = playerPixelsPerBeat(
             speedMode = PLAYER_SPEED_MODE_FLOATING,
-            speed = 1,
+            speed = 1f,
             greenNumber = greenNumber,
             initialBpm = initialBpm,
             judgeDistancePx = judgeDistance,
@@ -40,7 +40,7 @@ class PlayerSettingsTest {
             64f,
             playerPixelsPerBeat(
                 speedMode = PLAYER_SPEED_MODE_HI,
-                speed = 1,
+                speed = 1f,
                 greenNumber = PLAYER_GREEN_NUMBER_DEFAULT,
                 initialBpm = 150f,
                 judgeDistancePx = 331.2f,

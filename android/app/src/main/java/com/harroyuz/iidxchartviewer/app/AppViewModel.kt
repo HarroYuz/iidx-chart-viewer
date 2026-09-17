@@ -847,7 +847,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     }
 
     internal fun savePlayerSettings(mode: String, settings: PlayerSettings) {
-        val normalized = settings.copy(speed = settings.safeSpeed)
+        val normalized = settings.copy(speed = settings.safeSpeed, whiteNumber = settings.safeWhiteNumber)
         if (mode == "DP") {
             dpPlayerSettings = normalized
         } else {

@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.domain.player
 
+
 internal const val PLAYER_SPEED_MODE_FLOATING = "FLOATING_HI_SPEED"
 internal const val PLAYER_SPEED_MODE_HI = "HI_SPEED"
 internal const val PLAYER_GREEN_NUMBER_MIN = 10
@@ -14,7 +15,7 @@ internal const val PLAYER_GREEN_NUMBER_DEFAULT = 500
  */
 internal fun playerPixelsPerBeat(
     speedMode: String,
-    speed: Int,
+    speed: Float,
     greenNumber: Int,
     initialBpm: Float,
     judgeDistancePx: Float,
@@ -22,11 +23,12 @@ internal fun playerPixelsPerBeat(
     judgeDistancePx.coerceAtLeast(1f) * 36_000f /
         (greenNumber.coerceIn(PLAYER_GREEN_NUMBER_MIN, PLAYER_GREEN_NUMBER_MAX) * initialBpm.coerceAtLeast(1f))
 } else {
-    16f * speed.coerceIn(1, 100) * 4f
+    16f * normalizeHiSpeed(speed) * 4f
 }
 
 data class PlayerSettings(
-    val speed: Int = 1,
+    val speed: Float = 1f,
+    val whiteNumber: Int = 0,
     val speedMode: String = PLAYER_SPEED_MODE_FLOATING,
     val greenNumber: Int = PLAYER_GREEN_NUMBER_DEFAULT,
     val keepSpeedAcrossBpm: Boolean = false,
@@ -41,7 +43,8 @@ data class PlayerSettings(
     val randomMapping1P: List<Int> = (1..7).toList(),
     val randomMapping2P: List<Int> = (1..7).toList(),
 ) {
-    val safeSpeed: Int get() = speed.coerceIn(1, 100)
+    val safeSpeed: Float get() = normalizeHiSpeed(speed)
+    val safeWhiteNumber: Int get() = whiteNumber.coerceIn(0, 1000)
     val safeSpeedMode: String get() = speedMode.takeIf {
         it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING
     } ?: PLAYER_SPEED_MODE_FLOATING

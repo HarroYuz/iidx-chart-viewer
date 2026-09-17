@@ -272,7 +272,10 @@ class IidxLocalStore(context: Context) {
             ?.takeIf(::isPlayerOption)
             ?: option
         return PlayerSettings(
-        speed = preferences.getInt(speedKey, 1).coerceIn(1, 100),
+        speed = if (preferences.contains(playerKey("speed_hundredths", suffix))) {
+            preferences.getInt(playerKey("speed_hundredths", suffix), 100).coerceIn(100, 10000) / 100f
+        } else preferences.getInt(speedKey, 1).coerceIn(1, 100).toFloat(),
+        whiteNumber = preferences.getInt(playerKey("white_number", suffix), 0).coerceIn(0, 1000),
         speedMode = preferences.getString(playerKey("speed_mode", suffix), PLAYER_SPEED_MODE_FLOATING)
             ?.takeIf { it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING }
             ?: PLAYER_SPEED_MODE_FLOATING,
@@ -313,7 +316,7 @@ class IidxLocalStore(context: Context) {
             ?.takeIf(::isPlayerOption)
             ?: legacyOption
         return PlayerSettings(
-            speed = loadPlayerSpeed(),
+            speed = loadPlayerSpeed().toFloat(),
             speedMode = preferences.getString("player_speed_mode", PLAYER_SPEED_MODE_FLOATING)
                 ?.takeIf { it == PLAYER_SPEED_MODE_HI || it == PLAYER_SPEED_MODE_FLOATING }
                 ?: PLAYER_SPEED_MODE_FLOATING,
@@ -371,7 +374,8 @@ class IidxLocalStore(context: Context) {
         suffix: String,
         settings: PlayerSettings,
     ): android.content.SharedPreferences.Editor = apply {
-        putInt(playerKey("speed", suffix), settings.safeSpeed)
+        putInt(playerKey("speed_hundredths", suffix), kotlin.math.round(settings.safeSpeed * 100).toInt())
+        putInt(playerKey("white_number", suffix), settings.safeWhiteNumber)
         putString(playerKey("speed_mode", suffix), settings.safeSpeedMode)
         putInt(playerKey("green_number", suffix), settings.safeGreenNumber)
         putBoolean(playerKey("keep_speed_across_bpm", suffix), settings.keepSpeedAcrossBpm)

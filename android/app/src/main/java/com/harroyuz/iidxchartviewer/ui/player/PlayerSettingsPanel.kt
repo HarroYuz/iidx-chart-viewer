@@ -19,11 +19,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Switch
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.geometry.Offset
+import com.harroyuz.iidxchartviewer.domain.player.stepHiSpeed
+import java.util.Locale
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,13 +46,15 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.zIndex
 import com.harroyuz.iidxchartviewer.domain.player.PLAYER_GREEN_NUMBER_MAX
 import com.harroyuz.iidxchartviewer.domain.player.PLAYER_GREEN_NUMBER_MIN
@@ -68,11 +75,17 @@ internal fun PlayerConfigBox(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     onSettingsChange: (PlayerSettings) -> Unit,
+    visualEffectsDisabled: Boolean,
+    maximumWhiteNumber: Int,
+    maximumPanelHeight: Dp,
+    onRotaryStart: (PlayerNumber, Offset) -> Unit,
+    onRotaryMove: (Offset) -> Unit,
+    onRotaryEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(10.dp)
     val isFloating = settings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING
-    val activeSpeedValue = if (isFloating) settings.safeGreenNumber else settings.safeSpeed
+    val activeSpeedValue = if (isFloating) settings.safeGreenNumber.toString() else String.format(Locale.US, "%.2f", settings.safeSpeed)
     val summary = buildString {
         if (isFloating) append("FHS $activeSpeedValue")
         else append("Hi-Speed ${activeSpeedValue}x")
@@ -89,11 +102,8 @@ internal fun PlayerConfigBox(
         if (settings.keepSpeedAcrossBpm) append(", Fixed-Speed")
         if (!isSp && settings.flip) append(", FLIP")
     }
-    var speedInput by remember(settings.safeSpeed, settings.safeSpeedMode, settings.safeGreenNumber) {
-        mutableStateOf(activeSpeedValue.toString())
-    }
     Column(
-        modifier.fillMaxWidth()
+        modifier.fillMaxWidth().heightIn(max = maximumPanelHeight)
             .clip(shape)
             .background(Panel)
             .border(1.dp, ComposeColor(0xFFD8D6E1), shape),
@@ -117,178 +127,142 @@ internal fun PlayerConfigBox(
                 Text("▲", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-        if (expanded) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("流速:", color = Muted, fontSize = 11.sp, modifier = Modifier.width(34.dp))
-                PlayerSpeedModeChoice(
-                    label = "Floating Hi-Speed",
-                    selected = isFloating,
-                    onClick = { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_FLOATING)) },
-                )
-                Spacer(Modifier.width(3.dp))
-                PlayerSpeedModeChoice(
-                    label = "Hi-Speed",
-                    selected = !isFloating,
-                    onClick = { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_HI)) },
-                )
-                Spacer(Modifier.weight(1f))
-                TextButton(
-                    onClick = {
-                        onSettingsChange(
+        AnimatedVisibility(
+            visible = expanded,
+            enter = if (visualEffectsDisabled) EnterTransition.None else expandVertically(tween(160)) + fadeIn(tween(120)),
+            exit = if (visualEffectsDisabled) ExitTransition.None else shrinkVertically(tween(160)) + fadeOut(tween(100)),
+        ) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("流速:", color = Muted, fontSize = 11.sp, modifier = Modifier.width(34.dp))
+                    PlayerSpeedModeChoice("Floating Hi-Speed", isFloating) { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_FLOATING)) }
+                    Spacer(Modifier.width(4.dp))
+                    PlayerSpeedModeChoice("Hi-Speed", !isFloating) { onSettingsChange(settings.copy(speedMode = PLAYER_SPEED_MODE_HI)) }
+                    Spacer(Modifier.weight(1f))
+                    PlayerNumberControl(
+                        label = if (isFloating) "Floating Hi-Speed（10～9999）" else "Hi-Speed（1.00～100.00）",
+                        value = activeSpeedValue,
+                        decimal = !isFloating,
+                        onValue = { text ->
                             if (isFloating) {
-                                settings.copy(greenNumber = (settings.safeGreenNumber - 1).coerceAtLeast(PLAYER_GREEN_NUMBER_MIN))
+                                text.toIntOrNull()?.takeIf { it in PLAYER_GREEN_NUMBER_MIN..PLAYER_GREEN_NUMBER_MAX }
+                                    ?.let { onSettingsChange(settings.copy(greenNumber = it)); true } ?: false
                             } else {
-                                settings.copy(speed = (settings.safeSpeed - 1).coerceAtLeast(1))
-                            },
-                        )
-                    },
-                    modifier = Modifier.size(34.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                ) { Text("−", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-                BasicTextField(
-                    value = speedInput,
-                    onValueChange = { value ->
-                        val digits = value.filter(Char::isDigit).take(if (isFloating) 4 else 3)
-                        speedInput = digits
-                        digits.toIntOrNull()?.let { next ->
-                            if (isFloating) {
-                                if (next in PLAYER_GREEN_NUMBER_MIN..PLAYER_GREEN_NUMBER_MAX) {
-                                    onSettingsChange(settings.copy(greenNumber = next))
-                                }
-                            } else {
-                                onSettingsChange(settings.copy(speed = next.coerceIn(1, 100)))
+                                text.toFloatOrNull()?.takeIf { it in 1f..100f }
+                                    ?.let { onSettingsChange(settings.copy(speed = it)); true } ?: false
                             }
-                        }
-                    },
-                    modifier = Modifier.width(46.dp).height(34.dp)
-                        .border(1.dp, ComposeColor(0xFFB7B4C3), RoundedCornerShape(5.dp))
-                        .padding(horizontal = 4.dp),
-                    textStyle = TextStyle(color = Ink, fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    decorationBox = { innerTextField ->
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            innerTextField()
-                        }
-                    },
-                )
-                if (!isFloating) {
-                    Text("x", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 2.dp))
+                        },
+                        onDecrease = { onSettingsChange(if (isFloating) settings.copy(greenNumber = (settings.safeGreenNumber - 1).coerceAtLeast(PLAYER_GREEN_NUMBER_MIN)) else settings.copy(speed = stepHiSpeed(settings.safeSpeed, false))) },
+                        onIncrease = { onSettingsChange(if (isFloating) settings.copy(greenNumber = (settings.safeGreenNumber + 1).coerceAtMost(PLAYER_GREEN_NUMBER_MAX)) else settings.copy(speed = stepHiSpeed(settings.safeSpeed, true))) },
+                        onRotaryStart = { onRotaryStart(PlayerNumber.SPEED, it) },
+                        onRotaryMove = onRotaryMove,
+                        onRotaryEnd = onRotaryEnd,
+                    )
                 }
-                TextButton(
-                    onClick = {
-                        onSettingsChange(
-                            if (isFloating) {
-                                settings.copy(greenNumber = (settings.safeGreenNumber + 1).coerceAtMost(PLAYER_GREEN_NUMBER_MAX))
-                            } else {
-                                settings.copy(speed = (settings.safeSpeed + 1).coerceAtMost(100))
-                            },
-                        )
-                    },
-                    modifier = Modifier.size(34.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                ) { Text("+", color = Purple, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlayerSwitchSetting("流速不随BPM变化", settings.keepSpeedAcrossBpm) {
-                    onSettingsChange(settings.copy(keepSpeedAcrossBpm = it))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("谱面区域高度：", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.weight(1f))
+                    PlayerNumberControl(
+                        label = "谱面区域高度（${1000 - maximumWhiteNumber}～1000）",
+                        value = (1000 - settings.safeWhiteNumber.coerceAtMost(maximumWhiteNumber)).toString(),
+                        decimal = false,
+                        onValue = { text -> text.toIntOrNull()?.takeIf { it in (1000 - maximumWhiteNumber)..1000 }?.let { onSettingsChange(settings.copy(whiteNumber = 1000 - it)); true } ?: false },
+                        onDecrease = { onSettingsChange(settings.copy(whiteNumber = (settings.safeWhiteNumber + 1).coerceAtMost(maximumWhiteNumber))) },
+                        onIncrease = { onSettingsChange(settings.copy(whiteNumber = (settings.safeWhiteNumber.coerceAtMost(maximumWhiteNumber) - 1).coerceAtLeast(0))) },
+                        onRotaryStart = { onRotaryStart(PlayerNumber.HEIGHT, it) },
+                        onRotaryMove = onRotaryMove,
+                        onRotaryEnd = onRotaryEnd,
+                    )
                 }
-            }
-            if (!isSp) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PlayerSwitchSetting("FLIP", settings.flip) { onSettingsChange(settings.copy(flip = it)) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PlayerChoice("流速不随BPM变化", settings.keepSpeedAcrossBpm, { onSettingsChange(settings.copy(keepSpeedAcrossBpm = !settings.keepSpeedAcrossBpm)) })
                 }
-            }
-            if (isSp) {
-                PlayerSettingChoiceRow(
-                    label = "位置",
-                    choices = listOf("1P", "2P"),
-                    selected = settings.side,
-                    onSelect = { onSettingsChange(settings.copy(side = it)) },
-                )
-            }
-            if (isSp) {
-                PlayerSettingChoiceRow(
-                    label = "选项",
-                    choices = listOf("无", "MIRROR", "RANDOM"),
-                    selected = when (settings.safePlayOption) {
-                        "MIRROR" -> "MIRROR"
-                        "RANDOM" -> "RANDOM"
-                        else -> "无"
-                    },
-                    onSelect = { selected ->
-                        onSettingsChange(settings.copy(playOption = if (selected == "无") "NONE" else selected))
-                    },
-                )
-                if (settings.safePlayOption == "RANDOM") {
-                    RandomMappingRow(
-                        label = "",
-                        mapping = if (settings.side == "1P") settings.safeRandomMapping1P else settings.safeRandomMapping2P,
-                        onMappingChange = { mapping ->
-                            onSettingsChange(
-                                if (settings.side == "1P") settings.copy(randomMapping1P = mapping)
-                                else settings.copy(randomMapping2P = mapping),
-                            )
+                if (!isSp) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlayerChoice("FLIP", settings.flip, { onSettingsChange(settings.copy(flip = !settings.flip)) })
+                    }
+                }
+                if (isSp) {
+                    PlayerSettingChoiceRow(
+                        label = "位置",
+                        choices = listOf("1P", "2P"),
+                        selected = settings.side,
+                        onSelect = { onSettingsChange(settings.copy(side = it)) },
+                    )
+                }
+                if (isSp) {
+                    PlayerSettingChoiceRow(
+                        label = "选项",
+                        choices = listOf("无", "MIRROR", "RANDOM"),
+                        selected = when (settings.safePlayOption) {
+                            "MIRROR" -> "MIRROR"
+                            "RANDOM" -> "RANDOM"
+                            else -> "无"
+                        },
+                        onSelect = { selected ->
+                            onSettingsChange(settings.copy(playOption = if (selected == "无") "NONE" else selected))
                         },
                     )
-                }
-            } else {
-                PlayerSettingChoiceRow(
-                    label = "1P",
-                    choices = listOf("无", "MIRROR", "RANDOM"),
-                    selected = when (settings.safePlayOption1P) {
-                        "MIRROR" -> "MIRROR"
-                        "RANDOM" -> "RANDOM"
-                        else -> "无"
-                    },
-                    onSelect = { selected ->
-                        onSettingsChange(settings.copy(playOption1P = if (selected == "无") "NONE" else selected))
-                    },
-                )
-                if (settings.safePlayOption1P == "RANDOM") {
-                    RandomMappingRow(
-                        label = "",
-                        mapping = settings.safeRandomMapping1P,
-                        onMappingChange = { onSettingsChange(settings.copy(randomMapping1P = it)) },
+                    if (settings.safePlayOption == "RANDOM") {
+                        RandomMappingRow(
+                            label = "",
+                            mapping = if (settings.side == "1P") settings.safeRandomMapping1P else settings.safeRandomMapping2P,
+                            onMappingChange = { mapping ->
+                                onSettingsChange(
+                                    if (settings.side == "1P") settings.copy(randomMapping1P = mapping)
+                                    else settings.copy(randomMapping2P = mapping),
+                                )
+                            },
+                        )
+                    }
+                } else {
+                    PlayerSettingChoiceRow(
+                        label = "1P",
+                        choices = listOf("无", "MIRROR", "RANDOM"),
+                        selected = when (settings.safePlayOption1P) {
+                            "MIRROR" -> "MIRROR"
+                            "RANDOM" -> "RANDOM"
+                            else -> "无"
+                        },
+                        onSelect = { selected ->
+                            onSettingsChange(settings.copy(playOption1P = if (selected == "无") "NONE" else selected))
+                        },
                     )
-                }
-                PlayerSettingChoiceRow(
-                    label = "2P",
-                    choices = listOf("无", "MIRROR", "RANDOM"),
-                    selected = when (settings.safePlayOption2P) {
-                        "MIRROR" -> "MIRROR"
-                        "RANDOM" -> "RANDOM"
-                        else -> "无"
-                    },
-                    onSelect = { selected ->
-                        onSettingsChange(settings.copy(playOption2P = if (selected == "无") "NONE" else selected))
-                    },
-                )
-                if (settings.safePlayOption2P == "RANDOM") {
-                    RandomMappingRow(
-                        label = "",
-                        mapping = settings.safeRandomMapping2P,
-                        onMappingChange = { onSettingsChange(settings.copy(randomMapping2P = it)) },
+                    if (settings.safePlayOption1P == "RANDOM") {
+                        RandomMappingRow(
+                            label = "",
+                            mapping = settings.safeRandomMapping1P,
+                            onMappingChange = { onSettingsChange(settings.copy(randomMapping1P = it)) },
+                        )
+                    }
+                    PlayerSettingChoiceRow(
+                        label = "2P",
+                        choices = listOf("无", "MIRROR", "RANDOM"),
+                        selected = when (settings.safePlayOption2P) {
+                            "MIRROR" -> "MIRROR"
+                            "RANDOM" -> "RANDOM"
+                            else -> "无"
+                        },
+                        onSelect = { selected ->
+                            onSettingsChange(settings.copy(playOption2P = if (selected == "无") "NONE" else selected))
+                        },
                     )
+                    if (settings.safePlayOption2P == "RANDOM") {
+                        RandomMappingRow(
+                            label = "",
+                            mapping = settings.safeRandomMapping2P,
+                            onMappingChange = { onSettingsChange(settings.copy(randomMapping2P = it)) },
+                        )
+                    }
                 }
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlayerSwitchSetting("小节线", settings.showBarLines) { onSettingsChange(settings.copy(showBarLines = it)) }
-                PlayerSwitchSetting("小节序号", settings.showMeasureNumbers) { onSettingsChange(settings.copy(showMeasureNumbers = it)) }
-                PlayerSwitchSetting("变速线", settings.showBpmChanges) { onSettingsChange(settings.copy(showBpmChanges = it)) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("显示：", color = Muted, fontSize = 11.sp, modifier = Modifier.width(46.dp))
+                    PlayerChoice("小节线", settings.showBarLines, { onSettingsChange(settings.copy(showBarLines = !settings.showBarLines)) })
+                    Spacer(Modifier.width(4.dp))
+                    PlayerChoice("小节序号", settings.showMeasureNumbers, { onSettingsChange(settings.copy(showMeasureNumbers = !settings.showMeasureNumbers)) })
+                    Spacer(Modifier.width(4.dp))
+                    PlayerChoice("变速线", settings.showBpmChanges, { onSettingsChange(settings.copy(showBpmChanges = !settings.showBpmChanges)) })
+                }
             }
         }
     }
@@ -307,6 +281,7 @@ private fun PlayerSpeedModeChoice(
             .clip(shape)
             .background(if (selected) Purple.copy(alpha = .13f) else Background)
             .border(1.dp, if (selected) Purple else ComposeColor(0xFFCAC7D6), shape)
+            .semantics { this.selected = selected; role = Role.Button }
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center,
@@ -332,7 +307,7 @@ private fun PlayerSettingChoiceRow(
         Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = Muted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
+        Text("$label：", color = Muted, fontSize = 11.sp, modifier = Modifier.width(48.dp))
         choices.forEach { choice ->
             PlayerChoice(
                 label = choice,
@@ -357,23 +332,12 @@ private fun PlayerChoice(
             .clip(RoundedCornerShape(6.dp))
             .background(if (selected) Purple.copy(alpha = .13f) else Background)
             .border(1.dp, if (selected) Purple else ComposeColor(0xFFCAC7D6), RoundedCornerShape(6.dp))
+            .semantics { this.selected = selected; role = Role.Button }
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = if (selected) Purple else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun PlayerSwitchSetting(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = Muted, fontSize = 11.sp, maxLines = 1)
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.padding(start = 1.dp).scale(.72f),
-        )
     }
 }
 

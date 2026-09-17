@@ -45,7 +45,7 @@ import com.harroyuz.iidxchartviewer.ui.theme.PlayerSkyBlue
 internal fun ChartCanvas(
     data: TextageChartData,
     currentBeatState: State<Float>,
-    speed: Int,
+    speed: Float,
     speedMode: String,
     greenNumber: Int,
     keepSpeedAcrossBpm: Boolean,
@@ -59,14 +59,15 @@ internal fun ChartCanvas(
     playOption2P: String,
     randomMapping1P: List<Int>,
     randomMapping2P: List<Int>,
-    playing: Boolean,
+    tailHeightPx: Float,
+    onScrubStart: () -> Unit,
     onCurrentBeatChange: (Float) -> Unit,
     modifier: Modifier,
 ) {
     val laneCount = if (data.chart.mode == "DP") 16 else 8
     var canvasHeightPx by remember { mutableStateOf(0f) }
     val fallbackHeightPx = with(LocalDensity.current) { 360.dp.toPx() }
-    val judgeDistancePx = (canvasHeightPx.takeIf { it > 0f } ?: fallbackHeightPx) * .92f
+    val judgeDistancePx = ((canvasHeightPx.takeIf { it > 0f } ?: fallbackHeightPx) - tailHeightPx).coerceAtLeast(1f)
     // Keep note geometry in musical beat coordinates. Hi-Speed uses the
     // existing BPM-dependent beat spacing. Floating Hi-Speed derives the
     // spacing from the starting BPM so the selected green number represents
@@ -81,7 +82,9 @@ internal fun ChartCanvas(
     val pixelsPerSecond = pixelsPerBeat * data.bpmAt(0f).coerceAtLeast(1f) / 60f
     val labelTextSize = with(LocalDensity.current) { 10.sp.toPx() }
     val labelPadding = with(LocalDensity.current) { 4.dp.toPx() }
-    val latestPlaying by androidx.compose.runtime.rememberUpdatedState(playing)
+    val latestOnScrubStart by androidx.compose.runtime.rememberUpdatedState(onScrubStart)
+    val latestPixelsPerBeat by androidx.compose.runtime.rememberUpdatedState(pixelsPerBeat)
+    val latestPixelsPerSecond by androidx.compose.runtime.rememberUpdatedState(pixelsPerSecond)
     val latestOnCurrentBeatChange by androidx.compose.runtime.rememberUpdatedState(onCurrentBeatChange)
     val isSp = data.chart.mode != "DP"
     val measureAlign = if (isSp && side == "2P") Paint.Align.RIGHT else Paint.Align.LEFT
@@ -106,15 +109,14 @@ internal fun ChartCanvas(
         modifier
             .onSizeChanged { canvasHeightPx = it.height.toFloat() }
             .pointerInput(data.chart.id, speed, speedMode, greenNumber, keepSpeedAcrossBpm) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (!latestPlaying) {
-                        if (keepSpeedAcrossBpm) {
-                            latestOnCurrentBeatChange(
-                                data.beatAtSeconds(data.secondsAtBeat(currentBeatState.value) + dragAmount / pixelsPerSecond),
-                            )
-                        } else {
-                            latestOnCurrentBeatChange(currentBeatState.value + dragAmount / pixelsPerBeat)
-                        }
+                detectVerticalDragGestures(onDragStart = { latestOnScrubStart() }) { change, dragAmount ->
+                    change.consume()
+                    if (keepSpeedAcrossBpm) {
+                        latestOnCurrentBeatChange(
+                            data.beatAtSeconds(data.secondsAtBeat(currentBeatState.value) + dragAmount / latestPixelsPerSecond),
+                        )
+                    } else {
+                        latestOnCurrentBeatChange(currentBeatState.value + dragAmount / latestPixelsPerBeat)
                     }
                 }
         },
@@ -149,7 +151,7 @@ internal fun ChartCanvas(
         } else {
             (dpLeftWidth + dpGapUnits + laneWidths.slice(8 until boundary).sum()) * unit
         }
-        val judgeY = size.height * .92f
+        val judgeY = (size.height - tailHeightPx).coerceAtLeast(1f)
 
         drawRect(PlayerBackground)
         if (isSp) {

@@ -1,6 +1,18 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.Dp
+import com.harroyuz.iidxchartviewer.domain.player.*
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -130,15 +142,47 @@ private fun PlayerTimeline(
 internal fun ChartPlayer(
     data: TextageChartData,
     settings: PlayerSettings,
+    configExpanded: Boolean,
+    onConfigExpandedChange: (Boolean) -> Unit,
+    collapsedPlayerHeight: Dp,
+    visualEffectsDisabled: Boolean,
     onSettingsChange: (PlayerSettings) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var playing by remember(data.chart.id) { mutableStateOf(false) }
     val currentBeatState = remember(data.chart.id) { mutableStateOf(0f) }
-    var configExpanded by remember(data.chart.id) { mutableStateOf(false) }
-    val safeSpeed = settings.safeSpeed
-    val safeSpeedMode = settings.safeSpeedMode
-    val safeGreenNumber = settings.safeGreenNumber
+    var previewSettings by remember(data.chart.id) { mutableStateOf<PlayerSettings?>(null) }
+    val activeSettings = previewSettings ?: settings
+    val safeSpeed = activeSettings.safeSpeed
+    val safeSpeedMode = activeSettings.safeSpeedMode
+    val safeGreenNumber = activeSettings.safeGreenNumber
+    var rotaryKind by remember { mutableStateOf<PlayerNumber?>(null) }
+    var rotaryCenter by remember { mutableStateOf(Offset.Zero) }
+    var rotaryPointer by remember { mutableStateOf(Offset.Zero) }
+    var rotary by remember { mutableStateOf<RotaryAdjustment?>(null) }
+    var rootPosition by remember { mutableStateOf(Offset.Zero) }
+    var controlsHeight by remember { mutableStateOf(94.dp) }
+    val density = LocalDensity.current
+    val fieldBudget = (collapsedPlayerHeight - controlsHeight - 40.dp).coerceAtLeast(2.dp)
+    val tailHeight = minOf(28.8.dp, fieldBudget / 2)
+    val geometry = PlayerFieldGeometry(
+        maximumNoteHeight = (fieldBudget - tailHeight).value,
+        tailHeight = tailHeight.value,
+    )
+    val fieldHeight = (geometry.noteHeight(activeSettings.safeWhiteNumber) + tailHeight.value).dp
+    fun finishRotary() {
+        previewSettings?.let(onSettingsChange)
+        previewSettings = null
+        rotaryKind = null
+        rotary = null
+    }
+    BackHandler(rotaryKind != null) { finishRotary() }
+    LaunchedEffect(configExpanded) {
+        if (configExpanded) {
+            currentBeatState.value = 0f
+            playing = true
+        } else if (rotaryKind != null) finishRotary()
+    }
     val duration = data.durationBeats.coerceAtLeast(4f)
     val totalMeasures = data.measureCount().coerceAtLeast(1)
 
@@ -162,109 +206,149 @@ internal fun ChartPlayer(
         }
     }
 
-    Column(modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                PlayerLiveStats(data, currentBeatState, totalMeasures)
-            }
-            TextButton(
-                onClick = {
-                    playing = false
-                    val currentBeat = currentBeatState.value
-                    val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
-                    val measureStart = data.measureStart(currentMeasure)
-                    val targetMeasure = if (currentBeat <= measureStart + 0.001f) {
-                        currentMeasure - 1
-                    } else {
-                        currentMeasure
+    Box(modifier.fillMaxWidth().clipToBounds().onGloballyPositioned { rootPosition = it.positionInRoot() }) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+            Column(Modifier.onSizeChanged { controlsHeight = with(density) { it.height.toDp() } }) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("谱面播放器", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        PlayerLiveStats(data, currentBeatState, totalMeasures)
                     }
-                    currentBeatState.value = data.measureStart(targetMeasure.coerceAtLeast(1))
-                },
-                modifier = Modifier.size(34.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text("|‹", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-            TextButton(
-                onClick = {
-                    if (!playing && currentBeatState.value >= duration) currentBeatState.value = 0f
-                    playing = !playing
-                },
-                modifier = Modifier.size(42.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text(if (playing) "Ⅱ" else "▶", color = Purple, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
-            TextButton(
-                onClick = {
-                    playing = false
-                    val currentMeasure = data.measureAt(currentBeatState.value).coerceIn(1, totalMeasures)
-                    currentBeatState.value = if (currentMeasure >= totalMeasures) {
-                        duration
-                    } else {
-                        data.measureStart(currentMeasure + 1).coerceAtMost(duration)
-                    }
-                },
-                modifier = Modifier.size(34.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text("›|", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-        }
-        PlayerTimeline(
-            data = data,
-            currentBeatState = currentBeatState,
-            duration = duration,
-            onPlayingChange = { playing = it },
-            onSeek = { currentBeatState.value = it },
-        )
-        Spacer(Modifier.height(8.dp))
-
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            Box(
-                Modifier.fillMaxWidth()
-                    .height(360.dp)
-                    .align(Alignment.TopCenter)
-                    .background(PlayerBackground),
-            ) {
-                ChartCanvas(
+                    TextButton(
+                        onClick = {
+                            playing = false
+                            val currentBeat = currentBeatState.value
+                            val currentMeasure = data.measureAt(currentBeat).coerceIn(1, totalMeasures)
+                            val measureStart = data.measureStart(currentMeasure)
+                            val targetMeasure = if (currentBeat <= measureStart + 0.001f) {
+                                currentMeasure - 1
+                            } else {
+                                currentMeasure
+                            }
+                            currentBeatState.value = data.measureStart(targetMeasure.coerceAtLeast(1))
+                        },
+                        modifier = Modifier.size(34.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    ) { Text("|‹", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                    TextButton(
+                        onClick = {
+                            if (!playing && currentBeatState.value >= duration) currentBeatState.value = 0f
+                            playing = !playing
+                        },
+                        modifier = Modifier.size(42.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    ) { Text(if (playing) "Ⅱ" else "▶", color = Purple, fontSize = 21.sp, fontWeight = FontWeight.Bold) }
+                    TextButton(
+                        onClick = {
+                            playing = false
+                            val currentMeasure = data.measureAt(currentBeatState.value).coerceIn(1, totalMeasures)
+                            currentBeatState.value = if (currentMeasure >= totalMeasures) {
+                                duration
+                            } else {
+                                data.measureStart(currentMeasure + 1).coerceAtMost(duration)
+                            }
+                        },
+                        modifier = Modifier.size(34.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    ) { Text("›|", color = Purple, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                }
+                PlayerTimeline(
                     data = data,
                     currentBeatState = currentBeatState,
-                    speed = safeSpeed,
-                    speedMode = safeSpeedMode,
-                    greenNumber = safeGreenNumber,
-                    keepSpeedAcrossBpm = settings.keepSpeedAcrossBpm,
-                    showBarLines = settings.showBarLines,
-                    showBpmChanges = settings.showBpmChanges,
-                    showMeasureNumbers = settings.showMeasureNumbers,
-                    side = settings.side,
-                    flip = settings.flip,
-                    playOption = settings.safePlayOption,
-                    playOption1P = settings.safePlayOption1P,
-                    playOption2P = settings.safePlayOption2P,
-                    randomMapping1P = settings.safeRandomMapping1P,
-                    randomMapping2P = settings.safeRandomMapping2P,
-                    playing = playing,
-                    onCurrentBeatChange = { currentBeatState.value = it.coerceIn(0f, duration) },
-                    modifier = Modifier.fillMaxSize(),
+                    duration = duration,
+                    onPlayingChange = { playing = it },
+                    onSeek = { currentBeatState.value = it },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                val panelHeight = if (configExpanded) (maxHeight - fieldHeight - 8.dp).coerceAtLeast(80.dp) else 40.dp
+                Box(
+                    Modifier.fillMaxWidth()
+                        .height(fieldHeight)
+                        .align(Alignment.TopCenter)
+                        .background(PlayerBackground),
+                ) {
+                    ChartCanvas(
+                        data = data,
+                        currentBeatState = currentBeatState,
+                        speed = safeSpeed,
+                        speedMode = safeSpeedMode,
+                        greenNumber = safeGreenNumber,
+                        keepSpeedAcrossBpm = activeSettings.keepSpeedAcrossBpm,
+                        showBarLines = activeSettings.showBarLines,
+                        showBpmChanges = activeSettings.showBpmChanges,
+                        showMeasureNumbers = activeSettings.showMeasureNumbers,
+                        side = activeSettings.side,
+                        flip = activeSettings.flip,
+                        playOption = activeSettings.safePlayOption,
+                        playOption1P = activeSettings.safePlayOption1P,
+                        playOption2P = activeSettings.safePlayOption2P,
+                        randomMapping1P = activeSettings.safeRandomMapping1P,
+                        randomMapping2P = activeSettings.safeRandomMapping2P,
+                        tailHeightPx = with(density) { tailHeight.toPx() },
+                        onScrubStart = { playing = false },
+                        onCurrentBeatChange = { currentBeatState.value = it.coerceIn(0f, duration) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                PlayerConfigBox(
+                    settings = activeSettings,
+                    isSp = data.chart.mode != "DP",
+                    expanded = configExpanded,
+                    onExpandedChange = onConfigExpandedChange,
+                    visualEffectsDisabled = visualEffectsDisabled,
+                    maximumWhiteNumber = geometry.maximumWhiteNumber,
+                    maximumPanelHeight = panelHeight,
+                    onRotaryStart = { kind, center ->
+                        rotaryKind = kind
+                        rotaryCenter = center
+                        rotaryPointer = center
+                        previewSettings = activeSettings
+                        val isHeight = kind == PlayerNumber.HEIGHT
+                        val isFloating = activeSettings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING
+                        val initial = if (isHeight) (1000 - activeSettings.safeWhiteNumber.coerceAtMost(geometry.maximumWhiteNumber)).toFloat()
+                            else if (isFloating) activeSettings.safeGreenNumber.toFloat() else activeSettings.safeSpeed
+                        rotary = RotaryAdjustment(initial,
+                            if (isHeight) (1000 - geometry.maximumWhiteNumber).toFloat() else if (isFloating) PLAYER_GREEN_NUMBER_MIN.toFloat() else 1f,
+                            if (isHeight) 1000f else if (isFloating) PLAYER_GREEN_NUMBER_MAX.toFloat() else 100f)
+                    },
+                    onRotaryMove = { point ->
+                        rotaryPointer = point
+                        val relative = point - rotaryCenter
+                        val isHeight = rotaryKind == PlayerNumber.HEIGHT
+                        val isFloating = activeSettings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING
+                        val value = rotary?.move(relative.x, relative.y, with(density) { 12.dp.toPx() }, if (isHeight || isFloating) 200f else 1f)
+                        if (value != null) previewSettings = when {
+                            isHeight -> activeSettings.copy(whiteNumber = 1000 - value.roundToInt())
+                            isFloating -> activeSettings.copy(greenNumber = value.roundToInt())
+                            else -> activeSettings.copy(speed = normalizeHiSpeed(value))
+                        }
+                    },
+                    onRotaryEnd = { finishRotary() },
+                    onSettingsChange = { next ->
+                        onSettingsChange(
+                            next.copy(
+                                speed = next.safeSpeed,
+                                speedMode = next.safeSpeedMode,
+                                greenNumber = next.safeGreenNumber,
+                                keepSpeedAcrossBpm = next.keepSpeedAcrossBpm,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f).alpha(if (rotaryKind == null) 1f else 0f),
                 )
             }
-            PlayerConfigBox(
-                settings = settings,
-                isSp = data.chart.mode != "DP",
-                expanded = configExpanded,
-                onExpandedChange = {
-                    configExpanded = it
-                    if (it) playing = false
-                },
-                onSettingsChange = { next ->
-                    onSettingsChange(
-                        next.copy(
-                            speed = next.safeSpeed,
-                            speedMode = next.safeSpeedMode,
-                            greenNumber = next.safeGreenNumber,
-                            keepSpeedAcrossBpm = next.keepSpeedAcrossBpm,
-                        ),
-                    )
-                },
-                modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f),
-            )
+            if (!data.parsed) Text(data.parserMessage ?: "当前谱面格式尚未完成解析。", color = Orange, fontSize = 10.sp)
         }
-        if (!data.parsed) Text(data.parserMessage ?: "当前谱面格式尚未完成解析。", color = Orange, fontSize = 10.sp)
+        if (rotaryKind != null) {
+            val label = when {
+                rotaryKind == PlayerNumber.HEIGHT -> "谱面区域高度 ${1000 - activeSettings.safeWhiteNumber.coerceAtMost(geometry.maximumWhiteNumber)}"
+                activeSettings.safeSpeedMode == PLAYER_SPEED_MODE_FLOATING -> "FHS ${activeSettings.safeGreenNumber}"
+                else -> "Hi-Speed ${String.format(Locale.US, "%.2f", activeSettings.safeSpeed)}"
+            }
+            PlayerRotaryOverlay(rotaryCenter - rootPosition, rotaryPointer - rootPosition, label)
+        }
     }
 }
