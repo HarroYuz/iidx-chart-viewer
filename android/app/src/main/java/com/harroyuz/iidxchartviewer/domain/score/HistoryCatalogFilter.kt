@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.domain.score
 
+import com.harroyuz.iidxchartviewer.domain.catalog.FavoriteFilter
+import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.domain.catalog.catalogSongTypes
 import com.harroyuz.iidxchartviewer.domain.catalog.matchesCatalogFilters
 import com.harroyuz.iidxchartviewer.domain.model.ArcadeStatus
@@ -15,7 +17,10 @@ internal fun matchesHistoryCatalogFilters(
     versions: Set<String>,
     levels: Set<Int>,
     types: Set<ArcadeStatus>,
+    favoriteSongKeys: Set<String> = emptySet(),
+    favoriteFilter: FavoriteFilter = FavoriteFilter.ALL,
 ): Boolean {
+    if (!favoriteFilter.matches(chart?.let(::songGroupKey) in favoriteSongKeys)) return false
     val matchesMetadata = chart?.matchesCatalogFilters(versions, levels, types)
         ?: (versions.isEmpty() && levels.isEmpty() && types.containsAll(catalogSongTypes))
     if (!matchesMetadata) return false

@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.ui.components.FavoriteButton
 import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,6 +52,8 @@ import com.harroyuz.iidxchartviewer.ui.theme.Outline
 internal fun SongGroupRow(
     song: SongGroup,
     bjmIndex: BjmIndex,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onOpenSong: (IidxChart) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
@@ -60,7 +63,7 @@ internal fun SongGroupRow(
     CompositionLocalProvider(
         LocalBrowseMotion provides motion?.takeIf { it.movingSongKey == null || it.movingSongKey == song.key },
     ) {
-        SongGroupContent(song, bjmIndex, onOpenSong, onOpenChart, onCopyText, modifier)
+        SongGroupContent(song, bjmIndex, isFavorite, onToggleFavorite, onOpenSong, onOpenChart, onCopyText, modifier)
     }
 }
 
@@ -68,6 +71,8 @@ internal fun SongGroupRow(
 private fun SongGroupContent(
     song: SongGroup,
     bjmIndex: BjmIndex,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onOpenSong: (IidxChart) -> Unit,
     onOpenChart: (IidxChart) -> Unit,
     onCopyText: (String) -> Unit,
@@ -96,18 +101,21 @@ private fun SongGroupContent(
             onCopyText = onCopyText,
         )
         Spacer(Modifier.height(7.dp))
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 44.dp).horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            song.charts.forEach { chart ->
-                DifficultyChip(
-                    chart = chart,
-                    onOpenChart = onOpenChart,
-                    sharedDifficulty = true,
-                    score = scoreForChart(chart, bjmIndex),
-                )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).heightIn(min = 44.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                song.charts.forEach { chart ->
+                    DifficultyChip(
+                        chart = chart,
+                        onOpenChart = onOpenChart,
+                        sharedDifficulty = true,
+                        score = scoreForChart(chart, bjmIndex),
+                    )
+                }
             }
+            FavoriteButton(isFavorite, onToggleFavorite)
         }
     }
 }

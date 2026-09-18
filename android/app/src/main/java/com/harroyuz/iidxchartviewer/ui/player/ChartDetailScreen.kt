@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.player
 
+import com.harroyuz.iidxchartviewer.ui.components.FavoriteButton
 import com.harroyuz.iidxchartviewer.ui.history.formatBjmHistoryTime
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -65,6 +66,8 @@ internal fun ChartDetailScreen(
     chart: IidxChart,
     siblingCharts: List<IidxChart>,
     bjmIndex: BjmIndex,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     chartData: TextageChartData?,
     loading: Boolean,
     playerSettings: PlayerSettings,
@@ -92,6 +95,7 @@ internal fun ChartDetailScreen(
             ) {
                 Column(Modifier.onSizeChanged { headerHeight = with(density) { it.height.toDp() } }) {
                     AppTopBar(title = "谱面浏览", onNavigate = onBack) {
+                        FavoriteButton(isFavorite, onToggleFavorite)
                         PlayStyleButton(mode, onStyleToggle)
                     }
                     SongInfoHeader(

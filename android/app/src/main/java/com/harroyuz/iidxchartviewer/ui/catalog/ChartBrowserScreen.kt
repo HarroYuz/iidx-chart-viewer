@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.domain.catalog.FavoriteFilter
 import com.harroyuz.iidxchartviewer.domain.catalog.preferredChartOrder
 import com.harroyuz.iidxchartviewer.ui.components.RetainedPage
 import androidx.activity.compose.BackHandler
@@ -96,6 +97,8 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun ChartBrowserScreen(
     state: IidxAppState,
+    favoriteSongKeys: Set<String>,
+    onToggleFavoriteSong: (String) -> Unit,
     bjmHistory: List<BjmScore>,
     bjmIndex: BjmIndex,
     mode: String,
@@ -141,6 +144,7 @@ internal fun ChartBrowserScreen(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
+    var favoriteFilter by rememberSaveable { mutableStateOf(FavoriteFilter.ALL) }
     var selectedVersions by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedLevels by rememberSaveable { mutableStateOf(emptyList<Int>()) }
     var sortOrder by rememberSaveable { mutableStateOf(CatalogSortOrder.TITLE_ASCENDING) }
@@ -311,6 +315,8 @@ internal fun ChartBrowserScreen(
                 }
                 val filteredSongs = remember(
                     allSongs,
+                    favoriteSongKeys,
+                    favoriteFilter,
                     query,
                     selectedVersions,
                     selectedLevels,
@@ -322,6 +328,7 @@ internal fun ChartBrowserScreen(
                     val versions = selectedVersions.toSet()
                     val levels = selectedLevels.toSet()
                     allSongs.mapNotNull { song ->
+                        if (!favoriteFilter.matches(song.key in favoriteSongKeys)) return@mapNotNull null
                         val matchingCharts = song.charts.filter {
                             it.matchesCatalogFilters(versions, levels, selectedTypes)
                         }
@@ -439,7 +446,7 @@ internal fun ChartBrowserScreen(
                             IconButton(onClick = { filterExpanded = !filterExpanded }) {
                                 FunnelIcon(
                                     if (
-                                        filterExpanded ||
+                                        filterExpanded || favoriteFilter != FavoriteFilter.ALL ||
                                         selectedVersions.isNotEmpty() ||
                                         selectedLevels.isNotEmpty() ||
                                         selectedTypes.size < catalogSongTypes.size ||
@@ -456,6 +463,8 @@ internal fun ChartBrowserScreen(
                                 shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
                         ) {
                             CatalogFilterPanel(
+                                favoriteFilter = favoriteFilter,
+                                onFavoriteToggle = { favoriteFilter = favoriteFilter.toggle(it) },
                                 searchFields = searchDimensions,
                                 onSearchFieldToggle = { field ->
                                     when (field) {
@@ -484,6 +493,7 @@ internal fun ChartBrowserScreen(
                                     includeDeleted = true
                                     includeConsumer = true
                                     includeCurrent = true
+                                    favoriteFilter = FavoriteFilter.ALL
                                     searchGenreEnabled = true
                                     searchTitleEnabled = true
                                     searchComposerEnabled = true
@@ -492,6 +502,7 @@ internal fun ChartBrowserScreen(
                             )
                         }
                         val activeFilterSummary = buildList {
+                            if (favoriteFilter != FavoriteFilter.ALL) add("收藏状态：${favoriteFilter.label}")
                             if (selectedVersions.isNotEmpty()) {
                                 add("版本 ${versionOptions.filter { it.value in selectedVersions }.joinToString("/") { it.abbreviation }}")
                             }
@@ -556,6 +567,7 @@ internal fun ChartBrowserScreen(
                                     includeDeleted = true
                                     includeConsumer = true
                                     includeCurrent = true
+                                    favoriteFilter = FavoriteFilter.ALL
                                 }) {
                                     Text("清除筛选")
                                 }
@@ -566,6 +578,8 @@ internal fun ChartBrowserScreen(
                         itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
                             SongGroupRow(
                                 song = song,
+                                isFavorite = song.key in favoriteSongKeys,
+                                onToggleFavorite = { onToggleFavoriteSong(song.key) },
                                 bjmIndex = bjmIndex,
                                 onOpenSong = onOpenSong,
                                 onOpenChart = onOpenChart,
@@ -581,6 +595,7 @@ internal fun ChartBrowserScreen(
             RetainedPage(visible = bjmDataPageVisible) {
                 BjmDataScreen(
                     state = state,
+                    favoriteSongKeys = favoriteSongKeys,
                     history = bjmHistory,
                     bjmIndex = bjmIndex,
                     onOpenMenu = { drawerScope.launch { drawerState.open() } },

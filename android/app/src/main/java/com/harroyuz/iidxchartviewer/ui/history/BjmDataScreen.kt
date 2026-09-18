@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.history
 
+import com.harroyuz.iidxchartviewer.domain.catalog.FavoriteFilter
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -81,6 +82,7 @@ import com.harroyuz.iidxchartviewer.ui.theme.Purple
 @Composable
 internal fun BjmDataScreen(
     state: IidxAppState,
+    favoriteSongKeys: Set<String>,
     history: List<BjmScore>,
     bjmIndex: BjmIndex,
     onOpenMenu: () -> Unit,
@@ -99,6 +101,7 @@ internal fun BjmDataScreen(
 ) {
     var logoutConfirmationVisible by remember { mutableStateOf(false) }
     var filterExpanded by rememberSaveable { mutableStateOf(false) }
+    var favoriteFilter by rememberSaveable { mutableStateOf(FavoriteFilter.ALL) }
     var searchFields by rememberSaveable { mutableStateOf(listOf("曲名", "曲师", "曲风")) }
     var selectedVersions by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedLevels by rememberSaveable { mutableStateOf(emptyList<Int>()) }
@@ -112,6 +115,7 @@ internal fun BjmDataScreen(
     }
     val versionOptions = remember(state.charts) { buildCatalogVersionOptions(state.charts) }
     fun resetFilters() {
+        favoriteFilter = FavoriteFilter.ALL
         searchFields = listOf("曲名", "曲师", "曲风")
         selectedVersions = emptyList()
         selectedLevels = emptyList()
@@ -123,13 +127,13 @@ internal fun BjmDataScreen(
     }
     val musicById = remember(state.bjmMusic) { state.bjmMusic.associateBy { it.musicId } }
     val recordDates = remember(history) { history.map { it.time }.distinct().associateWith(::bjmHistoryRecordDate) }
-    val matchingHistory = remember(history, query, searchFields, selectedVersions, selectedLevels, selectedTypes, historyCharts, musicById) {
+    val matchingHistory = remember(history, favoriteSongKeys, favoriteFilter, query, searchFields, selectedVersions, selectedLevels, selectedTypes, historyCharts, musicById) {
         val fields = searchFields.toSet()
         val versions = selectedVersions.toSet()
         val levels = selectedLevels.toSet()
         history.filter { record ->
             val chart = resolveBjmHistoryTarget(record, historyCharts[record.key].orEmpty()).navigationChart
-            matchesHistoryCatalogFilters(chart, musicById[record.musicId], query, fields, versions, levels, selectedTypes)
+            matchesHistoryCatalogFilters(chart, musicById[record.musicId], query, fields, versions, levels, selectedTypes, favoriteSongKeys, favoriteFilter)
         }
     }
     val historyCountByDate = remember(matchingHistory) {
@@ -139,13 +143,14 @@ internal fun BjmDataScreen(
         matchingHistory.filter { selectedDate == null || recordDates.getValue(it.time) == selectedDate }
     }
     val activeSummary = buildList {
+        if (favoriteFilter != FavoriteFilter.ALL) add("收藏状态：${favoriteFilter.label}")
         if (searchFields.size < 3) add("仅搜索${orderedSearchFields.joinToString("/")}")
         if (selectedTypes.size < catalogSongTypes.size) add("曲目类型：${catalogSongTypes.filter { it in selectedTypes }.joinToString("/") { it.filterLabel() }}")
         if (selectedLevels.isNotEmpty()) add("LEVEL ${selectedLevels.sorted().joinToString("/")}")
         if (selectedVersions.isNotEmpty()) add("版本 ${versionOptions.filter { it.value in selectedVersions }.joinToString("/") { it.abbreviation }}")
         selectedDate?.let { add("日期 $it") }
     }.joinToString("，")
-    LaunchedEffect(query, selectedDate, searchFields, selectedVersions, selectedLevels, selectedTypes) {
+    LaunchedEffect(favoriteFilter, query, selectedDate, searchFields, selectedVersions, selectedLevels, selectedTypes) {
         listState.scrollToItem(0)
     }
 
@@ -216,6 +221,8 @@ internal fun BjmDataScreen(
                         shrinkVertically(tween(180), shrinkTowards = Alignment.Top) + fadeOut(tween(100)),
                 ) {
                     CatalogFilterPanel(
+                        favoriteFilter = favoriteFilter,
+                        onFavoriteToggle = { favoriteFilter = favoriteFilter.toggle(it) },
                         searchFields = orderedSearchFields,
                         onSearchFieldToggle = { field ->
                             if (field !in searchFields) searchFields = searchFields + field

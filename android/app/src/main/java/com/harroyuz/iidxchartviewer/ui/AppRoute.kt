@@ -8,6 +8,8 @@ internal fun AppRoute(viewModel: AppViewModel) {
     with(viewModel) {
         IidxApp(
             state = appState,
+            favoriteSongKeys = favoriteSongKeys,
+            onToggleFavoriteSong = ::toggleFavoriteSong,
             bjmHistory = bjmHistory,
             bjmIndex = bjmIndex,
             chartMetadata = chartMetadata,

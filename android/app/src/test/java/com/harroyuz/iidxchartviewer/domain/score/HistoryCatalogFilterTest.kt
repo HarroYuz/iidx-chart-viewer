@@ -1,5 +1,7 @@
 package com.harroyuz.iidxchartviewer.domain.score
 
+import com.harroyuz.iidxchartviewer.domain.catalog.FavoriteFilter
+import com.harroyuz.iidxchartviewer.domain.catalog.songGroupKey
 import com.harroyuz.iidxchartviewer.domain.catalog.catalogSongTypes
 import com.harroyuz.iidxchartviewer.domain.model.*
 import org.junit.Assert.*
@@ -15,6 +17,24 @@ class HistoryCatalogFilterTest {
     private fun matches(target: IidxChart? = chart, query: String = "", fields: Set<String> = allFields,
         versions: Set<String> = emptySet(), levels: Set<Int> = emptySet(), types: Set<ArcadeStatus> = allTypes) =
         matchesHistoryCatalogFilters(target, music, query, fields, versions, levels, types)
+
+    @Test fun favoritesAreSharedAcrossModesAndDifficultiesAndCombineWithMetadataFilters() {
+        val favorites = setOf(songGroupKey(chart))
+        val dp = chart.copy(id = "song-dp-a", mode = "DP", difficulty = "A", level = 12)
+        assertTrue(matchesHistoryCatalogFilters(dp, music, "song", allFields, emptySet(), setOf(12), allTypes, favorites, FavoriteFilter.FAVORITED))
+        assertFalse(matchesHistoryCatalogFilters(dp, music, "song", allFields, emptySet(), setOf(9), allTypes, favorites, FavoriteFilter.FAVORITED))
+        assertFalse(matchesHistoryCatalogFilters(dp, music, "", allFields, emptySet(), emptySet(), allTypes, favorites, FavoriteFilter.NOT_FAVORITED))
+        assertFalse(matchesHistoryCatalogFilters(chart.copy(title = "Other Song"), music, "", allFields, emptySet(), emptySet(), allTypes, favorites, FavoriteFilter.FAVORITED))
+        assertTrue(matchesHistoryCatalogFilters(dp, music, "", allFields, emptySet(), emptySet(), allTypes, emptySet(), FavoriteFilter.NOT_FAVORITED))
+    }
+
+    @Test fun unlinkedHistoryRemainsAvailableAsNotFavorited() {
+        val favorites = setOf(songGroupKey(chart))
+        for (filter in FavoriteFilter.entries) {
+            assertEquals(filter != FavoriteFilter.FAVORITED,
+                matchesHistoryCatalogFilters(null, music, "", allFields, emptySet(), emptySet(), allTypes, favorites, filter))
+        }
+    }
 
     @Test fun searchOnlyUsesSelectedFieldsAndKeepsTitleAliasesAndSubtitles() {
         assertTrue(matches(query = " subtitle ", fields = setOf("曲名")))

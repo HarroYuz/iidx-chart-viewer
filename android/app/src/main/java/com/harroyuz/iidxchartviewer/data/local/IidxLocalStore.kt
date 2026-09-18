@@ -240,6 +240,17 @@ class IidxLocalStore(context: Context) {
         preferences.edit().putLong("textage_last_sync_at", timestamp).apply()
     }
 
+    fun loadFavoriteSongKeys(): Set<String> = preferences.getStringSet("favorite_song_keys", emptySet()).orEmpty()
+        .mapNotNull { encoded -> runCatching { String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8) }.getOrNull() }
+        .toSet()
+
+    fun saveFavoriteSongKeys(keys: Set<String>) {
+        // Group keys contain NUL separators, which cannot be written directly into preference XML.
+        preferences.edit().putStringSet("favorite_song_keys", keys.map {
+            java.util.Base64.getEncoder().encodeToString(it.toByteArray(Charsets.UTF_8))
+        }.toSet()).apply()
+    }
+
     fun visualEffectsDisabled(): Boolean = preferences.getBoolean("visual_effects_disabled", false)
 
     fun setVisualEffectsDisabled(disabled: Boolean) {

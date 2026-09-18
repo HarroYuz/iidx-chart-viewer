@@ -76,6 +76,8 @@ private data class BrowsePage(
 @Composable
 internal fun IidxApp(
     state: IidxAppState,
+    favoriteSongKeys: Set<String>,
+    onToggleFavoriteSong: (String) -> Unit,
     bjmHistory: List<BjmScore>,
     bjmIndex: BjmIndex,
     chartMetadata: BjmChartMetadata?,
@@ -199,6 +201,8 @@ internal fun IidxApp(
                         ) {
                             ChartBrowserScreen(
                                 state = state,
+                                favoriteSongKeys = favoriteSongKeys,
+                                onToggleFavoriteSong = onToggleFavoriteSong,
                                 bjmHistory = bjmHistory,
                                 bjmIndex = bjmIndex,
                                 mode = browserMode,
@@ -286,6 +290,8 @@ internal fun IidxApp(
                                             .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
                                         ChartDetailScreen(
                                             chart = selectedChart,
+                                            isFavorite = selectedSongKey in favoriteSongKeys,
+                                            onToggleFavorite = { onToggleFavoriteSong(selectedSongKey) },
                                             siblingCharts = family,
                                             bjmIndex = bjmIndex,
                                             chartData = page.chartData,
@@ -333,6 +339,8 @@ internal fun IidxApp(
                                             .sortedWith(compareBy<IidxChart> { difficultyOrder(it.difficulty) }.thenBy { it.level })
                                         SongDetailScreen(
                                             song = selectedSong,
+                                            isFavorite = selectedSongKey in favoriteSongKeys,
+                                            onToggleFavorite = { onToggleFavoriteSong(selectedSongKey) },
                                             initialRadarDifficulty = page.initialRadarDifficulty,
                                             chartMetadata = chartMetadata,
                                             chartMetadataLoading = chartMetadataLoading,

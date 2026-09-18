@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.ui.components.FavoriteButton
 import com.harroyuz.iidxchartviewer.domain.model.BjmChartMetadata
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +53,8 @@ internal fun SongDetailScreen(
     onRefreshChartMetadata: () -> Unit,
     charts: List<IidxChart>,
     bjmIndex: BjmIndex,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     mode: String,
     onBack: () -> Unit,
     onStyleToggle: () -> Unit,
@@ -62,6 +65,7 @@ internal fun SongDetailScreen(
         Box(Modifier.matchParentSize().browseSongSurface("song-surface:${songGroupKey(song)}").background(Background))
         Column(Modifier.fillMaxSize()) {
             AppTopBar(title = "曲目信息", onNavigate = onBack) {
+                FavoriteButton(isFavorite, onToggleFavorite)
                 PlayStyleButton(mode, onStyleToggle)
             }
             SongInfoHeader(

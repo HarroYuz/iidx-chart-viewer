@@ -1,5 +1,6 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import com.harroyuz.iidxchartviewer.domain.catalog.FavoriteFilter
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -66,6 +67,8 @@ internal fun ArcadeStatus.filterLabel(): String = when (this) {
 
 @Composable
 internal fun CatalogFilterPanel(
+    favoriteFilter: FavoriteFilter,
+    onFavoriteToggle: (Boolean) -> Unit,
     searchFields: List<String>,
     onSearchFieldToggle: (String) -> Unit,
     types: Set<ArcadeStatus>,
@@ -94,6 +97,7 @@ internal fun CatalogFilterPanel(
     ) {
         FilterChoiceRow("关键字搜索范围：", listOf("曲名", "曲师", "曲风"), searchFields::contains, onSearchFieldToggle)
         FilterChoiceRow("曲目类型：", catalogSongTypes, types::contains, onTypeToggle) { it.filterLabel() }
+        FilterChoiceRow("收藏状态：", listOf(true, false), favoriteFilter::matches, onFavoriteToggle) { if (it) "已收藏" else "未收藏" }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterExpansionButton(
                 "等级", if (levels.isEmpty()) "全部" else levels.sorted().joinToString("/"),

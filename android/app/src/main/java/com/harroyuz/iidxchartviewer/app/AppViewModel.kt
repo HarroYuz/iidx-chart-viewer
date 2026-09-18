@@ -75,6 +75,14 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
 
     internal var appState by mutableStateOf(IidxAppState())
         private set
+    internal var favoriteSongKeys by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    internal fun toggleFavoriteSong(key: String) {
+        favoriteSongKeys = if (key in favoriteSongKeys) favoriteSongKeys - key else favoriteSongKeys + key
+        store.saveFavoriteSongKeys(favoriteSongKeys)
+    }
+
     internal var bjmHistory by mutableStateOf<List<BjmScore>>(emptyList())
         private set
     internal var bjmIndex by mutableStateOf(BjmIndex())
@@ -144,6 +152,7 @@ internal class AppViewModel(application: Application) : AndroidViewModel(applica
     private var exitToastShown = false
 
     init {
+        favoriteSongKeys = store.loadFavoriteSongKeys()
         localCatalogPresent = store.hasTextageCatalogMarker()
         autoUpdateEnabled = store.autoUpdateEnabled()
         visualEffectsDisabled = store.visualEffectsDisabled()
