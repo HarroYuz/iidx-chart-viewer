@@ -1,5 +1,8 @@
 package com.harroyuz.iidxchartviewer.ui.catalog
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import com.harroyuz.iidxchartviewer.ui.components.FavoriteButton
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +49,8 @@ internal fun SongInfoHeader(
     modifier: Modifier = Modifier,
     detail: Boolean = false,
     notes: String? = null,
+    isFavorite: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -70,13 +75,25 @@ internal fun SongInfoHeader(
         Spacer(Modifier.height(if (detail) 3.dp else 4.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f).browseSharedBounds(songKey?.let { "song-info:$it" }, stableInDetails = true).padding(end = if (detail) 12.dp else 10.dp)) {
-                AutoScrollingText(
-                    displayTitle(title, sourceLabel), color = Ink,
-                    fontSize = if (detail) 27.sp else 16.sp,
-                    lineHeight = if (detail) 28.sp else 22.sp,
-                    fontWeight = if (detail) FontWeight.Bold else FontWeight.SemiBold,
-                    onLongPress = if (detail) ({ onCopyText(title) }) else null,
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (detail && onToggleFavorite != null) {
+                        FavoriteButton(
+                            isFavorite, onToggleFavorite,
+                            modifier = Modifier.browseSharedBounds(songKey?.let { "favorite:$it" }, stable = true),
+                            compact = true,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Box(Modifier.weight(1f)) {
+                        AutoScrollingText(
+                            displayTitle(title, sourceLabel), color = Ink,
+                            fontSize = if (detail) 27.sp else 16.sp,
+                            lineHeight = if (detail) 28.sp else 22.sp,
+                            fontWeight = if (detail) FontWeight.Bold else FontWeight.SemiBold,
+                            onLongPress = if (detail) ({ onCopyText(title) }) else null,
+                        )
+                    }
+                }
                 if (subtitle.isNotBlank()) {
                     if (detail) AutoScrollingText(subtitle, color = Muted, fontSize = 12.sp, lineHeight = 13.sp)
                     else Text(subtitle, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

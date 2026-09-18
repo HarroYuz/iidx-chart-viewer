@@ -115,7 +115,10 @@ private fun SongGroupContent(
                     )
                 }
             }
-            FavoriteButton(isFavorite, onToggleFavorite)
+            FavoriteButton(
+                isFavorite, onToggleFavorite,
+                modifier = Modifier.browseSharedBounds("favorite:${song.key}", stable = true),
+            )
         }
     }
 }
