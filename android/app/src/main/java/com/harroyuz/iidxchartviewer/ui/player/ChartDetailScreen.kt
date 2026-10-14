@@ -43,6 +43,7 @@ import com.harroyuz.iidxchartviewer.domain.player.PlayerSettings
 import com.harroyuz.iidxchartviewer.domain.score.scoreRankName
 import com.harroyuz.iidxchartviewer.ui.catalog.DifficultyChip
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
+import com.harroyuz.iidxchartviewer.ui.components.FavoriteButton
 import com.harroyuz.iidxchartviewer.ui.components.ChartLoadError
 import com.harroyuz.iidxchartviewer.ui.components.ChartParseWarning
 import com.harroyuz.iidxchartviewer.ui.catalog.SongInfoHeader
@@ -94,6 +95,10 @@ internal fun ChartDetailScreen(
             ) {
                 Column(Modifier.onSizeChanged { headerHeight = with(density) { it.height.toDp() } }) {
                     AppTopBar(title = "谱面浏览", onNavigate = onBack) {
+                        FavoriteButton(
+                            isFavorite, onToggleFavorite,
+                            modifier = Modifier.browseSharedBounds("favorite:${songGroupKey(chart)}", stable = true),
+                        )
                         PlayStyleButton(mode, onStyleToggle)
                     }
                     SongInfoHeader(
@@ -109,8 +114,6 @@ internal fun ChartDetailScreen(
                         onCopyText = onCopyText,
                         modifier = Modifier.padding(horizontal = 20.dp),
                         detail = true,
-                        isFavorite = isFavorite,
-                        onToggleFavorite = onToggleFavorite,
                         notes = (chartData?.chart?.notes ?: chart.notes).takeIf { it > 0 }?.toString() ?: "—",
                     )
                     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {

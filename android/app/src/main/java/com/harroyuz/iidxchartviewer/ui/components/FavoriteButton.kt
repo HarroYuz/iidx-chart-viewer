@@ -21,12 +21,11 @@ internal fun FavoriteButton(
     isFavorite: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
 ) {
     IconToggleButton(
         checked = isFavorite,
         onCheckedChange = { onToggle() },
-        modifier = modifier.size(if (compact) 32.dp else 40.dp).semantics {
+        modifier = modifier.size(40.dp).semantics {
             contentDescription = if (isFavorite) "取消收藏" else "收藏曲目"
             stateDescription = if (isFavorite) "已收藏" else "未收藏"
         },

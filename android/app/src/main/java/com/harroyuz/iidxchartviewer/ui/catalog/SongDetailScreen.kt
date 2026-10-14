@@ -33,6 +33,7 @@ import com.harroyuz.iidxchartviewer.domain.model.BjmScore
 import com.harroyuz.iidxchartviewer.domain.model.IidxChart
 import com.harroyuz.iidxchartviewer.ui.player.ChartScoreSummary
 import com.harroyuz.iidxchartviewer.ui.components.AppTopBar
+import com.harroyuz.iidxchartviewer.ui.components.FavoriteButton
 import com.harroyuz.iidxchartviewer.ui.components.PlayStyleButton
 import com.harroyuz.iidxchartviewer.ui.components.difficultyColor
 import com.harroyuz.iidxchartviewer.ui.components.difficultyName
@@ -64,6 +65,10 @@ internal fun SongDetailScreen(
         Box(Modifier.matchParentSize().browseSongSurface("song-surface:${songGroupKey(song)}").background(Background))
         Column(Modifier.fillMaxSize()) {
             AppTopBar(title = "曲目信息", onNavigate = onBack) {
+                FavoriteButton(
+                    isFavorite, onToggleFavorite,
+                    modifier = Modifier.browseSharedBounds("favorite:${songGroupKey(song)}", stable = true),
+                )
                 PlayStyleButton(mode, onStyleToggle)
             }
             SongInfoHeader(
@@ -79,8 +84,6 @@ internal fun SongDetailScreen(
                 onCopyText = onCopyText,
                 modifier = Modifier.padding(horizontal = 20.dp),
                 detail = true,
-                isFavorite = isFavorite,
-                onToggleFavorite = onToggleFavorite,
             )
             Spacer(Modifier.height(12.dp))
             LazyColumn(
